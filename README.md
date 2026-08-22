@@ -114,7 +114,7 @@ sudo apt install libegl1 libgles2 libgl1 libglib2.0-0
 | `warrior2` | 战士二式 | Virabhadrasana II | 摄像头放在正前方，侧身入镜 | 8 | 自动判别 |
 | `warrior1` | 战士一式 | Virabhadrasana I | 摄像头放在侧前方，全身入镜 | 9 | 自动判别 |
 | `triangle` | 三角式 | Trikonasana | 摄像头放在正前方，侧身入镜 | 7 | 自动判别 |
-| `downdog` | 下犬式 | Adho Mukha Svanasana | 摄像头放在身体侧面 | 6 | 自动判别 |
+| `downdog` | 下犬式 | Adho Mukha Svanasana | 摄像头放在身体侧面 | 7 | 自动判别 |
 | `plank` | 平板支撑 | Phalakasana | 摄像头放在身体侧面，与地面同高 | 7 | 自动判别 |
 | `chair` | 椅子式 | Utkatasana | 摄像头放在身体侧面 | 5 | 自动判别 |
 <!-- END GENERATED: poses -->
@@ -251,6 +251,7 @@ python -m yoga_coach --source my_warrior2.jpg
 | --- | --- | --- | --- | --- |
 | 髋部折叠角 | ≤100° | — | 臀部向上向后推高，做出倒 V | 1.4 |
 | 背部延展 | ≥155° | 耳朵回到两臂之间，从手到髋拉成一条线 | — | 1.3 |
+| 脚跟下沉 | ≤0.15× | — | 脚跟向下踩向地面，踩不到地是正常的，别硬压 | 0.6 |
 | 腿部伸展·左 | ≥155° | 腿后侧紧就微屈膝，但主动向上推坐骨 | — | 0.9 |
 | 腿部伸展·右 | ≥155° | 腿后侧紧就微屈膝，但主动向上推坐骨 | — | 0.9 |
 | 手臂伸直·左 | ≥163° | 手臂伸直，从肩到指尖主动延展 | — | 1 |
@@ -539,8 +540,8 @@ python -m pyflakes yoga_coach tests tools
 ```
 
 <!-- BEGIN GENERATED: stats -->
-- 体式 **8** 个，检查规则 **55** 条
-- 测试函数 **192** 个（部分带参数化，实际用例数更多），不需要摄像头和 MediaPipe
+- 体式 **8** 个，检查规则 **56** 条
+- 测试函数 **198** 个（部分带参数化，实际用例数更多），不需要摄像头和 MediaPipe
 <!-- END GENERATED: stats -->
 
 测试用的是手写坐标的"火柴人"骨架（`tests/figures.py`），每个姿势的几何推导都写在注释里。这样"前膝超过脚踝会触发哪条建议"是能精确断言的，不用指望某段录像里刚好还留着这个错误。

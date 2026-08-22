@@ -487,6 +487,28 @@ DOWN_DOG = PoseSpec(
             when_low=Text("耳朵回到两臂之间，从手到髋拉成一条线", "Ears between the arms, one line from hands to hips"),
             focus=("{s}_shoulder",),
         ),
+        Check(
+            key="heel_down",
+            label=Text("脚跟下沉", "Heels down"),
+            # Measured against the toes rather than the floor: the ball of the
+            # foot is on the ground in this pose, so it *is* the floor, and no
+            # ground plane has to be guessed at.  About 0.15 torso lengths is
+            # 7cm of lift on an adult.
+            metric=m.vertical_gap("{s}_heel", "{s}_foot_index"),
+            high=0.15,
+            falloff=0.25,
+            # Deliberately light.  Heels touching down is not the standard in a
+            # general class -- most calves and hamstrings will not allow it, and
+            # forcing it rounds the back.  This should nudge towards reaching
+            # down, never dominate the score.
+            weight=0.6,
+            unit="×",
+            when_high=Text(
+                "脚跟向下踩向地面，踩不到地是正常的，别硬压",
+                "Reach the heels down -- not touching is normal, do not force it",
+            ),
+            focus=("{s}_heel",),
+        ),
         *bilateral(
             key="leg_straight",
             label=Text("腿部伸展", "Leg extended"),

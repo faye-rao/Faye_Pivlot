@@ -213,6 +213,16 @@ DOWN_DOG_SIDE: dict[str, tuple[float, float]] = {
     "right_foot_index": (0.763, 0.904),
 }
 
+#: Downward Dog with the heels well clear of the floor -- about 18cm of lift
+#: on an adult, i.e. up on the balls of the feet.  The toes stay put, which is
+#: what makes them usable as the floor reference.
+DOWN_DOG_HEELS_UP: dict[str, tuple[float, float]] = {
+    **DOWN_DOG_SIDE,
+    "left_heel": (0.860, 0.760),
+    "right_heel": (0.863, 0.764),
+}
+
+
 #: Landmarks the far side of the body loses in any side-on pose.  MediaPipe
 #: reports them with low visibility because they are behind the near side --
 #: which is normal framing, not a cropped body.

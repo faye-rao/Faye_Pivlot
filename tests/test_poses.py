@@ -7,6 +7,7 @@ distinguishable from the others so ``--pose auto`` picks it.
 
 import pytest
 from figures import (
+    DOWN_DOG_HEELS_UP,
     DOWN_DOG_SIDE,
     FAR_SIDE_OCCLUDED,
     PLANK_SIDE,
@@ -364,3 +365,58 @@ class TestDownDog:
     def test_a_deep_fold_is_still_recognised_as_downward_dog(self):
         ranked = rank_poses(self.deeper(0.60, 0.15))
         assert ranked[0].pose.key == "downdog"
+
+
+class TestDownDogHeels:
+    """Heels reaching towards the floor, measured against the toes.
+
+    The ball of the foot is on the ground in this pose, so the toes are the
+    floor -- no ground plane has to be inferred.  Deliberately forgiving:
+    heels touching down is not the standard in a general class, and forcing it
+    rounds the back.
+    """
+
+    def with_lift(self, lift):
+        return figure(
+            {
+                **DOWN_DOG_SIDE,
+                "left_heel": (0.860, 0.900 - lift),
+                "right_heel": (0.863, 0.904 - lift),
+            }
+        )
+
+    def test_heels_on_the_floor_pass(self):
+        result = evaluate(self.with_lift(0.0), get_pose("downdog"))
+        assert "heel_down" not in cue_keys(result)
+
+    @pytest.mark.parametrize("lift", [0.02, 0.04, 0.06])
+    def test_a_modest_lift_is_tolerated(self, lift):
+        """Roughly 2 to 8cm on an adult -- normal for most calves, and not
+        worth nagging about."""
+        result = evaluate(self.with_lift(lift), get_pose("downdog"))
+        assert "heel_down" not in cue_keys(result)
+
+    def test_heels_clearly_up_are_flagged(self):
+        result = evaluate(figure(DOWN_DOG_HEELS_UP), get_pose("downdog"))
+        assert "heel_down" in cue_keys(result)
+        advice = next(
+            c.advice() for c in result.corrections(99) if c.check.key == "heel_down"
+        )
+        assert "脚跟" in advice.zh
+        # The cue must not order the impossible.
+        assert "正常" in advice.zh
+
+    def test_it_never_dominates_the_score(self):
+        """Light on purpose: a body that cannot get its heels down should
+        still score well on an otherwise good pose."""
+        result = evaluate(figure(DOWN_DOG_HEELS_UP), get_pose("downdog"))
+        assert result.score > 88
+
+    def test_heels_up_is_still_downward_dog(self):
+        assert rank_poses(figure(DOWN_DOG_HEELS_UP))[0].pose.key == "downdog"
+
+    def test_the_check_survives_a_side_on_camera(self):
+        result = evaluate(
+            figure(DOWN_DOG_HEELS_UP, hidden=FAR_SIDE_OCCLUDED), get_pose("downdog")
+        )
+        assert "heel_down" in cue_keys(result)
