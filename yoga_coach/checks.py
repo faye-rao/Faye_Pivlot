@@ -57,6 +57,22 @@ class Check:
         if math.isinf(self.high) and self.when_high is not None:
             raise ValueError(f"check {self.key}: when_high set but no upper bound")
 
+    def target_text(self) -> str:
+        """The target band as a human-readable string, e.g. ``80~110°``.
+
+        Lives on the check rather than the result so the documentation
+        generator can print the band without evaluating anything.
+        """
+        low_inf = math.isinf(self.low)
+        high_inf = math.isinf(self.high)
+        if low_inf and high_inf:
+            return "-"
+        if low_inf:
+            return f"≤{self.high:g}{self.unit}"
+        if high_inf:
+            return f"≥{self.low:g}{self.unit}"
+        return f"{self.low:g}~{self.high:g}{self.unit}"
+
     def evaluate(self, skeleton: Skeleton, side: str) -> "CheckResult":
         value = self.metric(skeleton, side)
         if value is None:
@@ -111,15 +127,7 @@ class CheckResult:
         return tuple(resolve(name, self.side) for name in self.check.focus)
 
     def target_text(self) -> str:
-        low_inf = math.isinf(self.check.low)
-        high_inf = math.isinf(self.check.high)
-        if low_inf and high_inf:
-            return "-"
-        if low_inf:
-            return f"≤{self.check.high:g}{self.check.unit}"
-        if high_inf:
-            return f"≥{self.check.low:g}{self.check.unit}"
-        return f"{self.check.low:g}~{self.check.high:g}{self.check.unit}"
+        return self.check.target_text()
 
     def value_text(self) -> str:
         if self.value is None:
