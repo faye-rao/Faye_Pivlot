@@ -1,0 +1,8 @@
+# Runtime dependencies for yoga_coach.
+mediapipe>=1.0,<2.0
+opencv-python>=4.8
+numpy>=1.24
+pillow>=10.1  # 10.1 起 ImageFont.load_default() 支持 size 参数（无 CJK 字体时的回退路径要用）
+
+# Optional: spoken corrections (`--speak`).  Uncomment to enable.
+# pyttsx3>=2.90
