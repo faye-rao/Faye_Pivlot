@@ -169,6 +169,67 @@ PLANK_SIDE: dict[str, tuple[float, float]] = {
     "right_foot_index": (0.873, 0.664),
 }
 
+#: Downward Dog seen from the side: an inverted V with the hands and feet on
+#: the floor at y=0.90 and the hips high at y=0.32.
+#:
+#: The derived angles, for when a band changes and this has to be re-checked:
+#: hip (shoulder-hip-knee) 66 degrees, back (wrist-shoulder-hip) 164, legs
+#: 177, arms 180 -- every check comfortably inside its band.
+DOWN_DOG_SIDE: dict[str, tuple[float, float]] = {
+    **STANDING,
+    # Head hangs below the shoulders, between the arms.
+    "nose": (0.255, 0.700),
+    "left_ear": (0.288, 0.678),
+    "right_ear": (0.285, 0.682),
+    "left_eye": (0.268, 0.694),
+    "right_eye": (0.265, 0.698),
+    "left_eye_inner": (0.272, 0.694),
+    "right_eye_inner": (0.269, 0.698),
+    "left_eye_outer": (0.263, 0.694),
+    "right_eye_outer": (0.260, 0.698),
+    "mouth_left": (0.252, 0.716),
+    "mouth_right": (0.249, 0.720),
+    "left_shoulder": (0.300, 0.620),
+    "right_shoulder": (0.303, 0.624),
+    "left_elbow": (0.250, 0.760),
+    "right_elbow": (0.253, 0.764),
+    "left_wrist": (0.200, 0.900),
+    "right_wrist": (0.203, 0.904),
+    "left_pinky": (0.180, 0.910),
+    "right_pinky": (0.183, 0.914),
+    "left_index": (0.175, 0.905),
+    "right_index": (0.178, 0.909),
+    "left_thumb": (0.192, 0.898),
+    "right_thumb": (0.195, 0.902),
+    "left_hip": (0.520, 0.320),
+    "right_hip": (0.523, 0.324),
+    "left_knee": (0.680, 0.600),
+    "right_knee": (0.683, 0.604),
+    "left_ankle": (0.820, 0.880),
+    "right_ankle": (0.823, 0.884),
+    "left_heel": (0.860, 0.900),
+    "right_heel": (0.863, 0.904),
+    "left_foot_index": (0.760, 0.900),
+    "right_foot_index": (0.763, 0.904),
+}
+
+#: Landmarks the far side of the body loses in any side-on pose.  MediaPipe
+#: reports them with low visibility because they are behind the near side --
+#: which is normal framing, not a cropped body.
+FAR_SIDE_OCCLUDED: tuple[str, ...] = (
+    "left_shoulder",
+    "left_elbow",
+    "left_wrist",
+    "left_pinky",
+    "left_index",
+    "left_thumb",
+    "left_hip",
+    "left_knee",
+    "left_ankle",
+    "left_heel",
+    "left_foot_index",
+)
+
 #: Tree with the *left* leg standing and the right foot on the inner thigh.
 TREE_LEFT: dict[str, tuple[float, float]] = {
     **STANDING,

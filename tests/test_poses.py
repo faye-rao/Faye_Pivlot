@@ -6,7 +6,15 @@ distinguishable from the others so ``--pose auto`` picks it.
 """
 
 import pytest
-from figures import PLANK_SIDE, STANDING, TREE_LEFT, WARRIOR_II_RIGHT, figure
+from figures import (
+    DOWN_DOG_SIDE,
+    FAR_SIDE_OCCLUDED,
+    PLANK_SIDE,
+    STANDING,
+    TREE_LEFT,
+    WARRIOR_II_RIGHT,
+    figure,
+)
 
 from yoga_coach import POSES, evaluate, get_pose, rank_poses
 
@@ -15,7 +23,11 @@ GOOD_FIGURES = {
     "warrior2": WARRIOR_II_RIGHT,
     "plank": PLANK_SIDE,
     "tree": TREE_LEFT,
+    "downdog": DOWN_DOG_SIDE,
 }
+
+#: The three side-on poses, which is where the far half of the body is hidden.
+SIDE_ON = {"plank": PLANK_SIDE, "downdog": DOWN_DOG_SIDE}
 
 
 def cue_keys(result):
@@ -234,3 +246,71 @@ class TestConfidence:
         partial = evaluate(figure(hidden=("left_knee",)), get_pose("mountain"))
         assert partial.score == pytest.approx(full.score)
         assert any(not r.measured for r in partial.results)
+
+
+class TestSideOnCamera:
+    """A pose shot from its own recommended angle must still be scorable.
+
+    Reported from practice: Downward Dog said "body not fully in frame" while
+    the whole body plainly was.  Seen from the side, MediaPipe marks the far
+    arm and leg as low-visibility -- they are behind the near ones -- and
+    three separate places treated that occlusion as missing data.
+    """
+
+    @pytest.mark.parametrize("key", sorted(SIDE_ON))
+    def test_the_far_side_being_hidden_is_not_bad_framing(self, key):
+        skeleton = figure(SIDE_ON[key], hidden=FAR_SIDE_OCCLUDED)
+        assert skeleton.coverage() == pytest.approx(1.0)
+        assert skeleton.missing_parts() == []
+
+    @pytest.mark.parametrize("key", sorted(SIDE_ON))
+    def test_still_confident_with_the_far_side_hidden(self, key):
+        result = evaluate(figure(SIDE_ON[key], hidden=FAR_SIDE_OCCLUDED), get_pose(key))
+        assert result.confident, f"{key} 在侧面机位下应该能评分"
+        assert result.score > 95
+
+    @pytest.mark.parametrize("key", sorted(SIDE_ON))
+    def test_the_visible_side_is_the_one_evaluated(self, key):
+        """Picking the side on raw score alone hands the frame to the hidden
+        half: almost nothing is measurable there, and the two checks that
+        survive score 100."""
+        result = evaluate(figure(SIDE_ON[key], hidden=FAR_SIDE_OCCLUDED), get_pose(key))
+        assert result.side == "right"  # left_* is the occluded set
+        assert result.measured_share > 0.6
+
+    @pytest.mark.parametrize("key", sorted(SIDE_ON))
+    def test_auto_detection_still_names_it(self, key):
+        ranked = rank_poses(figure(SIDE_ON[key], hidden=FAR_SIDE_OCCLUDED))
+        assert ranked[0].pose.key == key
+
+    def test_torso_length_survives_one_hidden_side(self):
+        """Every distance is measured in torso lengths, and the torso needs a
+        shoulder and a hip -- previously both sides of each."""
+        skeleton = figure(DOWN_DOG_SIDE, hidden=FAR_SIDE_OCCLUDED)
+        assert skeleton.torso_length() is not None
+        assert skeleton.get("mid_shoulder") is not None
+        assert skeleton.get("mid_hip") is not None
+
+    def test_a_genuinely_cropped_body_is_still_caught(self):
+        both_legs_gone = (
+            "left_knee",
+            "right_knee",
+            "left_ankle",
+            "right_ankle",
+            "left_heel",
+            "right_heel",
+            "left_foot_index",
+            "right_foot_index",
+        )
+        skeleton = figure(DOWN_DOG_SIDE, hidden=both_legs_gone)
+        assert skeleton.coverage() < 0.6
+        assert set(skeleton.missing_parts()) == {"knee", "ankle", "heel", "foot_index"}
+        assert not evaluate(skeleton, get_pose("downdog")).confident
+
+    def test_levelling_checks_still_need_both_sides(self):
+        """mid_* falls back to one side, but a check comparing left against
+        right must not silently compare a landmark with itself."""
+        from yoga_coach import metrics as m
+
+        skeleton = figure(STANDING, hidden=("left_hip",))
+        assert m.tilt("left_hip", "right_hip")(skeleton, "left") is None

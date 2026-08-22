@@ -96,9 +96,14 @@ def evaluate(skeleton: Skeleton, pose: PoseSpec) -> PoseResult:
     reading fits and the left-side one does not, so the coach follows you
     without being told which way round you are standing.
     """
+    # Ranked by the measurement-discounted score, for the same reason
+    # rank_poses is: read from the side, the occluded half of the body makes
+    # most of its checks unmeasurable, and the two that survive can easily
+    # score 100.  Picking on raw score would hand the frame to the side the
+    # camera cannot see.
     return max(
         (evaluate_side(skeleton, pose, side) for side in pose.sides()),
-        key=lambda r: r.score,
+        key=lambda r: r.ranking_score,
     )
 
 

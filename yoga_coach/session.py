@@ -18,8 +18,30 @@ from dataclasses import dataclass, field
 from .checks import CheckResult, Text
 from .evaluator import PoseResult, evaluate, rank_poses
 from .geometry import Ema, Point
-from .landmarks import Skeleton
+from .landmarks import PART_NAMES_ZH, Skeleton
 from .poses import POSES, PoseSpec
+
+
+def _framing_notice(skeleton: Skeleton) -> Text:
+    """Say *what* cannot be seen, not just that something cannot.
+
+    "Get your whole body in frame" is useless advice to someone who believes
+    their whole body is in frame -- and in a side-on pose they are usually
+    right.  Naming the parts turns it into something actionable, and when the
+    parts named look wrong it points at the detector rather than the camera.
+    """
+    missing = skeleton.missing_parts()
+    if not missing:
+        return Text(
+            "关键点不够可靠，评分暂停——检查光线和背景",
+            "Landmarks too unreliable to score -- check the lighting and background",
+        )
+    zh = "、".join(PART_NAMES_ZH.get(part, part) for part in missing)
+    en = ", ".join(part.replace("_", " ") for part in missing)
+    return Text(
+        f"看不到{zh}，请后退或调整摄像头角度",
+        f"Cannot see: {en}. Step back or move the camera",
+    )
 
 
 class SkeletonSmoother:
@@ -148,11 +170,7 @@ class CoachSession:
             self.score_filter.reset()
             self._reset_hold()
             self._advice = []
-            return self._state(
-                result,
-                result.score,
-                Text("身体没有完整入镜，请后退或调整摄像头角度", "Get your whole body in frame"),
-            )
+            return self._state(result, result.score, _framing_notice(skeleton))
 
         score = self.score_filter.update(result.score) or result.score
         self._update_hold(score, dt)
