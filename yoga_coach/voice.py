@@ -8,22 +8,25 @@ usable with your eyes on the floor.
 audio device -- the coach runs exactly as before, silently, and says so once
 on stderr rather than failing.
 
-Two failures here are silent by nature, and both have bitten this program:
+Three failures here are silent by nature, and all three have bitten this
+program:
 
 * **Chinese through an English voice.**  SAPI5 accepts it and produces noise
-  or nothing, raising nothing anywhere.  So the speaker picks a voice matching
-  the requested language, and if it cannot find one it speaks the English half
-  of the cue instead of pretending.
+  or nothing, raising nothing anywhere.  The speaker picks a voice matching
+  the requested language, and if it cannot find one it speaks the English
+  half of the cue instead of pretending.
 * **A dead speech thread.**  SAPI5 is COM, and COM objects belong to the
-  thread that created them; an engine built on the main thread and driven from
-  a worker will typically manage one utterance and then start throwing.  The
-  engine is therefore created *on* the speech thread, the thread survives
-  errors instead of exiting, and a jam is reported rather than swallowed --
-  an earlier version lost every cue after the first with no message at all.
+  thread that created them.  The engine is therefore created *on* the speech
+  thread, the thread survives errors instead of exiting, and a jam is
+  reported rather than swallowed.
+* **An engine that speaks once and then goes quiet without erroring.**  This
+  is the one that no amount of exception handling catches: ``runAndWait()``
+  returns normally and nothing comes out.  See :meth:`Speaker._make_engine`.
 """
 
 from __future__ import annotations
 
+import gc
 import queue
 import sys
 import threading
@@ -49,6 +52,20 @@ _ZH_MARKERS = (
 #: Consecutive engine errors before speech gives up for the session.
 _MAX_FAILURES = 3
 
+ENGINE_MODES = ("auto", "fresh", "persistent")
+
+
+def default_engine_mode() -> str:
+    """Which engine strategy suits this platform.
+
+    Windows gets ``fresh``: SAPI5 through pyttsx3 routinely speaks the first
+    utterance and then falls silent -- no exception, no message, just nothing
+    from the speakers.  Rebuilding the engine each time costs a few hundred
+    milliseconds and sidesteps it.  Everywhere else a persistent engine is
+    both cheaper and reliable.
+    """
+    return "fresh" if sys.platform.startswith("win") else "persistent"
+
 
 def _voice_matches_chinese(voice) -> bool:
     haystack = [str(getattr(voice, "id", "")), str(getattr(voice, "name", ""))]
@@ -59,6 +76,14 @@ def _voice_matches_chinese(voice) -> bool:
         haystack.append(str(language))
     blob = " ".join(haystack).lower()
     return any(marker in blob for marker in _ZH_MARKERS)
+
+
+def pick_chinese_voice(voices) -> object | None:
+    """First Mandarin-capable voice in ``voices``, or ``None``."""
+    for voice in voices:
+        if _voice_matches_chinese(voice):
+            return voice
+    return None
 
 
 def describe_voices() -> list[str]:
@@ -93,14 +118,17 @@ class Speaker:
         *,
         rate: int = 165,
         min_gap: float = 3.0,
-        ready_timeout: float = 15.0,
+        engine_mode: str = "auto",
+        ready_timeout: float = 20.0,
     ) -> None:
         self.min_gap = min_gap
         #: The language actually spoken, which may differ from the one asked
         #: for when the machine has no matching voice installed.
         self.lang = lang
+        self.mode = default_engine_mode() if engine_mode == "auto" else engine_mode
         self._requested_lang = lang
         self._rate = rate
+        self._voice_id: str | None = None
         self._last_spoken: str | None = None
         self._last_time = -1e9
         # Two slots, so a forced cue can follow another forced one -- entering
@@ -177,7 +205,7 @@ class Speaker:
             self._queue.put_nowait(None)
         except queue.Full:
             pass
-        self._thread.join(timeout=2.0)
+        self._thread.join(timeout=5.0)
 
     # -- internals ----------------------------------------------------------
 
@@ -196,23 +224,56 @@ class Speaker:
             file=sys.stderr,
         )
 
-    def _select_chinese_voice(self, engine) -> str:
-        """Switch ``engine`` to a Mandarin voice, or fall back to English.
+    def _make_engine(self):  # pragma: no cover - needs a real audio device
+        """Build a configured pyttsx3 engine.
+
+        ``pyttsx3.init()`` keeps a ``WeakValueDictionary`` of live engines and
+        hands back the existing one for a driver rather than building a new
+        one.  In ``fresh`` mode that cache is exactly what has to be defeated:
+        collecting first lets the previous engine die so this really is a new
+        one, which is what makes the second and later utterances come out on
+        Windows.
+        """
+        import pyttsx3
+
+        gc.collect()
+        engine = pyttsx3.init()
+        engine.setProperty("rate", self._rate)
+        if self._voice_id is not None:
+            try:
+                engine.setProperty("voice", self._voice_id)
+            except Exception:
+                pass
+        return engine
+
+    def _dispose(self, engine) -> None:  # pragma: no cover - needs audio
+        try:
+            engine.stop()
+        except Exception:
+            pass
+        del engine
+        gc.collect()
+
+    def _resolve_voice(self, engine) -> str:
+        """Choose the voice, remember its id, and report a missing voice pack.
 
         Returns the language that will actually be spoken.
         """
+        if self._requested_lang != "zh":
+            return self._requested_lang
         try:
             voices = engine.getProperty("voices") or []
         except Exception:  # pragma: no cover - driver dependent
             voices = []
 
-        for voice in voices:
-            if _voice_matches_chinese(voice):
-                try:
-                    engine.setProperty("voice", voice.id)
-                    return "zh"
-                except Exception:  # pragma: no cover - driver dependent
-                    continue
+        chosen = pick_chinese_voice(voices)
+        if chosen is not None:
+            self._voice_id = chosen.id
+            try:
+                engine.setProperty("voice", chosen.id)
+            except Exception:  # pragma: no cover - driver dependent
+                pass
+            return "zh"
 
         print(
             "系统里没有中文语音包，语音提示改用英文（界面仍是中文）。\n"
@@ -229,6 +290,9 @@ class Speaker:
         if engine is None:
             self._drain()
             return
+        if self.mode == "fresh":
+            self._dispose(engine)
+            engine = None
 
         failures = 0
         while True:
@@ -236,8 +300,13 @@ class Speaker:
             if text is None:
                 break
             try:
+                if self.mode == "fresh":
+                    engine = self._make_engine()
                 engine.say(text)
                 engine.runAndWait()
+                if self.mode == "fresh":
+                    self._dispose(engine)
+                    engine = None
                 failures = 0
             except Exception as exc:
                 failures += 1
@@ -248,10 +317,13 @@ class Speaker:
                 # Never `return` here: an earlier version did, and every
                 # later cue was then silently dropped into a queue nobody
                 # was reading.
-                try:
-                    engine.stop()
-                except Exception:
-                    pass
+                if engine is not None:
+                    try:
+                        engine.stop()
+                    except Exception:
+                        pass
+                    if self.mode == "fresh":
+                        engine = None
                 if failures >= _MAX_FAILURES:
                     print("语音连续出错，已关闭语音提示。", file=sys.stderr)
                     break
@@ -260,7 +332,7 @@ class Speaker:
         self._drain()
 
     def _start_engine(self):  # pragma: no cover - needs a real audio device
-        """Build the engine *on this thread*.
+        """Build the first engine *on this thread* and settle the voice.
 
         SAPI5 is COM, and a COM object belongs to the thread that created it.
         Creating the engine on the main thread and driving it from here is
@@ -276,16 +348,12 @@ class Speaker:
             pass
 
         try:
-            import pyttsx3
-
-            engine = pyttsx3.init()
-            engine.setProperty("rate", self._rate)
+            engine = self._make_engine()
         except Exception as exc:
             print(f"语音引擎初始化失败，已关闭语音提示：{exc}", file=sys.stderr)
             return None
 
-        if self._requested_lang == "zh":
-            self.lang = self._select_chinese_voice(engine)
+        self.lang = self._resolve_voice(engine)
         self._alive = True
         return engine
 

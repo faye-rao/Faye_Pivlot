@@ -63,6 +63,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="不开摄像头，单独测试语音：列出系统音色并试播几句后退出",
     )
     parser.add_argument(
+        "--speak-engine",
+        default="auto",
+        choices=("auto", "fresh", "persistent"),
+        help="语音引擎策略：fresh 每句新建引擎（Windows 默认，绕开只响一句的问题），"
+        "persistent 复用引擎（其他系统默认）",
+    )
+    parser.add_argument(
         "--speak-rate",
         type=int,
         default=165,
@@ -128,13 +135,16 @@ def main(argv: list[str] | None = None) -> int:
 def speak_test(args) -> int:
     """Exercise speech on its own, so it can be diagnosed off the mat.
 
-    Speaks several cues in a row on purpose: the failure this exists to catch
-    was an engine that managed exactly one utterance and then went quiet.
+    Plays several cues under both engine strategies, because the failure this
+    exists to catch produces no error at all: the first utterance is audible,
+    the rest are not, and every call still returns cleanly.  The program
+    cannot hear, so it never claims speech works -- it reports what it did and
+    asks what you heard.
     """
     import time as _time
 
     from .checks import Text
-    from .voice import Speaker, describe_voices
+    from .voice import ENGINE_MODES, Speaker, default_engine_mode, describe_voices
 
     voices = describe_voices()
     if voices:
@@ -144,34 +154,51 @@ def speak_test(args) -> int:
         print("没有列出任何音色（pyttsx3 未安装，或驱动不可用）。")
     print()
 
-    speaker = Speaker(lang=args.lang, rate=args.speak_rate)
-    if not speaker.enabled:
-        print("语音不可用，上面的报错说明了原因。", file=sys.stderr)
+    lines = [
+        Text("第一句，测试语音", "Line one, testing"),
+        Text("第二句，前膝移回脚踝正上方", "Line two, knee over ankle"),
+        Text("第三句，到位了保持住", "Line three, hold there"),
+    ]
+
+    modes = [m for m in ENGINE_MODES if m != "auto"]
+    if args.speak_engine != "auto":
+        modes = [args.speak_engine]
+
+    worked = False
+    for mode in modes:
+        label = "引擎复用" if mode == "persistent" else "每句新建引擎"
+        print(f"—— 模式 {mode}（{label}）——")
+        speaker = Speaker(lang=args.lang, rate=args.speak_rate, engine_mode=mode)
+        if not speaker.enabled:
+            print("  引擎起不来，跳过。\n", file=sys.stderr)
+            continue
+        worked = True
+        print(f"  播报语言：{speaker.lang}")
+        for index, line in enumerate(lines, start=1):
+            print(f"  {index}. {line.get(speaker.lang)}", flush=True)
+            speaker.say(line, index * 100.0, force=True)
+            for _ in range(150):
+                if speaker._queue.empty():
+                    break
+                _time.sleep(0.1)
+            if not speaker.enabled:
+                print(f"  第 {index} 句之后引擎就报错停了。", file=sys.stderr)
+                break
+        _time.sleep(1.5)
+        speaker.close()
+        print()
+
+    if not worked:
+        print("语音完全不可用，上面的报错说明了原因。", file=sys.stderr)
         return 1
 
-    print(f"实际播报语言：{speaker.lang}")
-    lines = [
-        Text("语音测试，第一句", "Voice test, line one"),
-        Text("前膝移回脚踝正上方", "Bring the front knee over the ankle"),
-        Text("到位了，保持住", "That's it, hold there"),
-        Text("完成一组，保持了 20 秒", "Round complete, held 20 seconds"),
-    ]
-    for index, line in enumerate(lines, start=1):
-        print(f"  {index}. {line.get(speaker.lang)}")
-        # force=True bypasses the rate limit; each cue then waits for the
-        # engine to finish, which is what proves the thread survives.
-        speaker.say(line, index * 100.0, force=True)
-        for _ in range(100):
-            if speaker._queue.empty():
-                break
-            _time.sleep(0.1)
-        if not speaker.enabled:
-            print(f"\n第 {index} 句之后语音就停了——这正是要排查的故障。", file=sys.stderr)
-            speaker.close()
-            return 1
-    _time.sleep(1.0)
-    speaker.close()
-    print("\n四句都播完了，语音正常。")
+    print("=" * 56)
+    print("以上每组三句都**调用**完成了。程序听不见，所以到此为止它")
+    print("只能确认没有报错——真正的结果只有你知道：每组你听到了几句？")
+    print()
+    print(f"本机默认模式：{default_engine_mode()}")
+    print("  · 某一组三句都听到 → 用那个模式：--speak-engine <模式名>")
+    print("  · 两组都只听到第一句 → 告诉我，这条路走不通，我换方案")
     return 0
 
 
@@ -278,7 +305,9 @@ def run_stream(args, pose, source) -> int:
         from .checks import Text
         from .voice import Speaker
 
-        speaker = Speaker(lang=args.lang, rate=args.speak_rate)
+        speaker = Speaker(
+            lang=args.lang, rate=args.speak_rate, engine_mode=args.speak_engine
+        )
         announcer = Announcer()
         if speaker.enabled:
             # Say something before the practice starts, so you find out the

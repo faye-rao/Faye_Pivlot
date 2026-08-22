@@ -11,7 +11,12 @@ from types import SimpleNamespace
 import pytest
 
 from yoga_coach.checks import Text
-from yoga_coach.voice import Speaker, _voice_matches_chinese
+from yoga_coach.voice import (
+    Speaker,
+    _voice_matches_chinese,
+    default_engine_mode,
+    pick_chinese_voice,
+)
 
 
 def voice(id="", name="", languages=None):
@@ -119,9 +124,10 @@ def make_speaker(monkeypatch, voices, lang="zh"):
     speaker._ready.set()
     speaker._alive = True
     speaker._reported_stall = False
+    speaker._voice_id = None
+    speaker.mode = "persistent"
     speaker._thread = SimpleNamespace(is_alive=lambda: True)
-    if lang == "zh":
-        speaker.lang = speaker._select_chinese_voice(engine)
+    speaker.lang = speaker._resolve_voice(engine)
     return speaker, engine
 
 
@@ -187,6 +193,8 @@ def run_loop_with(monkeypatch, engine, cues):
     speaker._ready = threading.Event()
     speaker._alive = False
     speaker._reported_stall = False
+    speaker._voice_id = None
+    speaker.mode = "persistent"
     speaker._thread = SimpleNamespace(is_alive=lambda: True)
 
     def fake_start(self):
@@ -278,3 +286,49 @@ class TestThrottling:
             monkeypatch, [voice(id="zh-CN", name="Huihui")]
         )
         assert speaker.say(Text("", ""), 10.0) is False
+
+
+class TestEngineMode:
+    """Windows needs a new engine per utterance.
+
+    pyttsx3 on SAPI5 speaks the first cue and then goes quiet -- no
+    exception, `runAndWait()` returns cleanly, and nothing comes out. No
+    error handling can catch that, so the platform default sidesteps it.
+    """
+
+    def test_windows_defaults_to_a_fresh_engine(self, monkeypatch):
+        monkeypatch.setattr("sys.platform", "win32")
+        assert default_engine_mode() == "fresh"
+
+    @pytest.mark.parametrize("platform", ["linux", "darwin"])
+    def test_other_platforms_reuse_the_engine(self, monkeypatch, platform):
+        monkeypatch.setattr("sys.platform", platform)
+        assert default_engine_mode() == "persistent"
+
+    def test_auto_resolves_to_the_platform_default(self):
+        speaker = Speaker(lang="zh", engine_mode="auto")  # pyttsx3 absent here
+        assert speaker.mode == default_engine_mode()
+
+    def test_an_explicit_mode_is_kept(self):
+        assert Speaker(lang="zh", engine_mode="fresh").mode == "fresh"
+        assert Speaker(lang="zh", engine_mode="persistent").mode == "persistent"
+
+
+class TestVoicePicking:
+    def test_picks_the_first_mandarin_voice(self):
+        chinese = voice(id="zh-CN-Huihui", name="Microsoft Huihui - Chinese")
+        chosen = pick_chinese_voice(
+            [voice(id="en-US-David", name="David"), chinese, voice(id="zh-2", name="Yaoyao")]
+        )
+        assert chosen is chinese
+
+    def test_returns_none_when_there_is_no_mandarin_voice(self):
+        assert pick_chinese_voice([voice(id="en-US-David", name="David")]) is None
+
+    def test_remembers_the_voice_id_for_later_engines(self, monkeypatch):
+        """In fresh mode every utterance builds a new engine, so the chosen
+        voice has to be reapplied rather than rediscovered."""
+        speaker, _ = make_speaker(
+            monkeypatch, [voice(id="zh-CN-Huihui", name="Huihui")]
+        )
+        assert speaker._voice_id == "zh-CN-Huihui"

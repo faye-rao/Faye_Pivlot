@@ -89,7 +89,8 @@ sudo apt install libegl1 libgles2 libgl1 libglib2.0-0
 | `--headless` | | 不开窗口，只在终端输出 |
 | `--details` | | 启动时就展开每项检查的数值 |
 | `--speak` | | 语音播报 |
-| `--speak-test` | | 不开摄像头，单独诊断语音后退出 |
+| `--speak-test` | | 不开摄像头，两种引擎模式各试播三句后退出 |
+| `--speak-engine` | `auto` | `fresh` 每句新建引擎（Windows 默认）/ `persistent` 复用引擎 |
 | `--speak-rate` | `165` | 语速，词/分钟，越小越慢 |
 | `--log PATH.csv` | | 把每项检查的实测值逐条记到 CSV |
 | `--record PATH` | | 保存带标注的视频/图片 |
@@ -319,8 +320,17 @@ python -m yoga_coach --pose downdog --speak
 python -m yoga_coach --speak-test
 ```
 
-它会列出系统里所有音色（标出哪些是中文）、显示实际播报语言，然后连播四句。
-连播是故意的：曾经有个 bug 是引擎只能播一句，之后线程静默死掉——只播一句测不出来。
+它会列出系统里所有音色（标出哪些是中文）、显示实际播报语言，然后**用两种引擎模式各连播三句**。
+
+连播是故意的。这里有个特别阴的故障：**pyttsx3 在 Windows 上经常只发得出第一句**，
+之后 `runAndWait()` 照常返回、不抛任何异常、终端一片正常，但音箱里什么都没有。
+任何异常处理都抓不到它，只播一句也测不出来。
+
+解法是每句话都新建一个引擎（`--speak-engine fresh`，Windows 上已是默认）。
+代价是每句多几百毫秒，对几秒一次的口令无所谓。
+
+**注意**：`--speak-test` 不会告诉你"语音正常"——**程序听不见**，它只能确认调用没报错。
+哪一组三句你都听到了，就用哪个模式。
 
 ### 分数怎么解读
 
@@ -527,7 +537,7 @@ python -m pyflakes yoga_coach tests tools
 
 <!-- BEGIN GENERATED: stats -->
 - 体式 **8** 个，检查规则 **55** 条
-- 测试函数 **172** 个（部分带参数化，实际用例数更多），不需要摄像头和 MediaPipe
+- 测试函数 **179** 个（部分带参数化，实际用例数更多），不需要摄像头和 MediaPipe
 <!-- END GENERATED: stats -->
 
 测试用的是手写坐标的"火柴人"骨架（`tests/figures.py`），每个姿势的几何推导都写在注释里。这样"前膝超过脚踝会触发哪条建议"是能精确断言的，不用指望某段录像里刚好还留着这个错误。
