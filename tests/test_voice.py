@@ -103,20 +103,25 @@ class FakeEngine:
 
 def make_speaker(monkeypatch, voices, lang="zh"):
     """Build a Speaker around a fake engine, with no background thread."""
+    import queue
+    import threading
+
     engine = FakeEngine(voices)
-    monkeypatch.setattr(Speaker, "_run", lambda self: None)
     speaker = Speaker.__new__(Speaker)
     speaker.min_gap = 3.0
     speaker.lang = lang
+    speaker._requested_lang = lang
+    speaker._rate = 165
     speaker._last_spoken = None
     speaker._last_time = -1e9
-    import queue
-
-    speaker._queue = queue.Queue(maxsize=1)
-    speaker._engine = engine
-    speaker._thread = None
+    speaker._queue = queue.Queue(maxsize=2)
+    speaker._ready = threading.Event()
+    speaker._ready.set()
+    speaker._alive = True
+    speaker._reported_stall = False
+    speaker._thread = SimpleNamespace(is_alive=lambda: True)
     if lang == "zh":
-        speaker.lang = speaker._select_chinese_voice()
+        speaker.lang = speaker._select_chinese_voice(engine)
     return speaker, engine
 
 
@@ -150,6 +155,88 @@ class TestVoiceSelection:
         assert "voice" not in engine.properties
 
 
+class FlakyEngine(FakeEngine):
+    """An engine whose ``runAndWait`` throws, like SAPI5 driven cross-thread."""
+
+    def __init__(self, voices, fail_times):
+        super().__init__(voices)
+        self.remaining_failures = fail_times
+
+    def runAndWait(self):
+        if self.remaining_failures > 0:
+            self.remaining_failures -= 1
+            raise RuntimeError("run loop already started")
+
+    def stop(self):
+        pass
+
+
+def run_loop_with(monkeypatch, engine, cues):
+    """Drive Speaker._run synchronously with a pre-filled queue."""
+    import queue
+    import threading
+
+    speaker = Speaker.__new__(Speaker)
+    speaker.min_gap = 3.0
+    speaker.lang = "zh"
+    speaker._requested_lang = "en"  # skip voice selection
+    speaker._rate = 165
+    speaker._last_spoken = None
+    speaker._last_time = -1e9
+    speaker._queue = queue.Queue(maxsize=10)
+    speaker._ready = threading.Event()
+    speaker._alive = False
+    speaker._reported_stall = False
+    speaker._thread = SimpleNamespace(is_alive=lambda: True)
+
+    def fake_start(self):
+        self._alive = True
+        return engine
+
+    monkeypatch.setattr(Speaker, "_start_engine", fake_start)
+    for cue in cues:
+        speaker._queue.put_nowait(cue)
+    speaker._queue.put_nowait(None)  # sentinel: end the loop
+    speaker._run()
+    return speaker
+
+
+class TestSpeechThreadSurvival:
+    """The bug this guards: the thread used to `return` on any engine error,
+    after which every later cue vanished into a queue nobody was reading --
+    the user heard the startup line and then nothing, with no message."""
+
+    def test_one_engine_error_does_not_kill_the_thread(self, monkeypatch, capsys):
+        engine = FlakyEngine([], fail_times=1)
+        run_loop_with(monkeypatch, engine, ["第一句", "第二句", "第三句"])
+        # All three were attempted, not just the one before the error.
+        assert engine.spoken == ["第一句", "第二句", "第三句"]
+        assert "语音播报出错" in capsys.readouterr().err
+
+    def test_gives_up_after_repeated_failures_and_says_so(self, monkeypatch, capsys):
+        engine = FlakyEngine([], fail_times=99)
+        speaker = run_loop_with(monkeypatch, engine, ["一", "二", "三", "四", "五"])
+        assert not speaker.enabled
+        err = capsys.readouterr().err
+        assert "语音连续出错，已关闭语音提示" in err
+
+    def test_the_queue_is_drained_when_speech_stops(self, monkeypatch):
+        engine = FlakyEngine([], fail_times=99)
+        speaker = run_loop_with(monkeypatch, engine, ["一", "二", "三", "四", "五"])
+        # A jammed queue is what made every later `say` silently fail.
+        assert speaker._queue.empty()
+
+    def test_a_stalled_speaker_reports_once(self, monkeypatch, capsys):
+        engine = FlakyEngine([], fail_times=99)
+        speaker = run_loop_with(monkeypatch, engine, ["一", "二", "三", "四"])
+        capsys.readouterr()
+        assert speaker.say(Text("测试", "test"), 100.0) is False
+        first = capsys.readouterr().err
+        assert "语音播报已停止" in first
+        assert speaker.say(Text("测试", "test"), 200.0) is False
+        assert capsys.readouterr().err == ""  # not once per frame
+
+
 class TestThrottling:
     def test_drops_cues_inside_the_minimum_gap(self, monkeypatch):
         speaker, _ = make_speaker(
@@ -167,13 +254,24 @@ class TestThrottling:
         speaker._queue.get_nowait()
         assert speaker.say(Text("二", "two"), 10.1, force=True) is True
 
-    def test_a_full_queue_drops_rather_than_blocks(self, monkeypatch):
+    def test_an_unforced_cue_never_stacks_behind_another(self, monkeypatch):
         speaker, _ = make_speaker(
             monkeypatch, [voice(id="zh-CN", name="Huihui")]
         )
         assert speaker.say(Text("一", "one"), 10.0) is True
-        # Queue still full: previous cue not consumed by the speech thread.
+        # The speech thread has not consumed it yet: advice about a posture
+        # you may already have left is dropped rather than queued.
         assert speaker.say(Text("二", "two"), 20.0) is False
+
+    def test_two_forced_cues_fit_then_the_third_drops(self, monkeypatch):
+        speaker, _ = make_speaker(
+            monkeypatch, [voice(id="zh-CN", name="Huihui")]
+        )
+        # Entering a pose and reaching alignment arrive together; both must
+        # get through.
+        assert speaker.say(Text("一", "one"), 10.0, force=True) is True
+        assert speaker.say(Text("二", "two"), 10.1, force=True) is True
+        assert speaker.say(Text("三", "three"), 10.2, force=True) is False
 
     def test_empty_text_says_nothing(self, monkeypatch):
         speaker, _ = make_speaker(
