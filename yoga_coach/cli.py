@@ -52,7 +52,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--headless", action="store_true", help="不开窗口，只在终端输出建议")
     parser.add_argument("--details", action="store_true", help="启动时就显示每项检查的具体数值")
-    parser.add_argument("--speak", action="store_true", help="用语音朗读纠正建议（需要 pyttsx3）")
+    parser.add_argument(
+        "--speak",
+        action="store_true",
+        help="语音播报：报体式名、到位提示、纠正建议、完成一组（需要 pyttsx3）",
+    )
+    parser.add_argument(
+        "--speak-rate",
+        type=int,
+        default=165,
+        help="语音语速，词/分钟（默认 165，越小越慢）",
+    )
     parser.add_argument("--record", metavar="PATH", help="把带标注的画面保存到视频/图片文件")
     parser.add_argument("--width", type=int, default=1280, help="摄像头采集宽度")
     parser.add_argument("--height", type=int, default=720, help="摄像头采集高度")
@@ -197,10 +207,26 @@ def run_stream(args, pose, source) -> int:
         overlay = Overlay(lang=args.lang, font_path=args.font)
 
     speaker = None
+    announcer = None
     if args.speak:
+        from .announce import Announcer
+        from .checks import Text
         from .voice import Speaker
 
-        speaker = Speaker()
+        speaker = Speaker(lang=args.lang, rate=args.speak_rate)
+        announcer = Announcer()
+        if speaker.enabled:
+            # Say something before the practice starts, so you find out the
+            # audio works while you are still looking at the screen.
+            opening = (
+                Text("教练已就绪，自动识别体式", "Coach ready, detecting poses")
+                if pose is None
+                else Text(
+                    f"教练已就绪，{pose.name.zh}。{pose.view.zh}",
+                    f"Coach ready. {pose.name.en}. {pose.view.en}",
+                )
+            )
+            speaker.say(opening, 0.0, force=True)
 
     writer = None
     show_details = args.details
@@ -231,10 +257,14 @@ def run_stream(args, pose, source) -> int:
                 skeleton = detector.detect(frame, int(now * 1000))
                 state = session.update(skeleton, now)
 
-                if speaker is not None and state.corrections:
-                    advice = state.corrections[0].advice()
-                    if advice is not None:
-                        speaker.say(advice.get(args.lang), now)
+                if announcer is not None and speaker is not None:
+                    cue = announcer.update(state, now)
+                    if cue is not None and not speaker.say(
+                        cue.text, now, force=cue.force
+                    ):
+                        # Engine was busy and dropped it; let the announcer
+                        # offer the cue again instead of counting it as said.
+                        announcer.undo()
 
                 canvas = frame
                 if overlay is not None:
@@ -256,6 +286,8 @@ def run_stream(args, pose, source) -> int:
                         show_details = not show_details
                     if key == ord("r"):
                         session.reset()
+                        if announcer is not None:
+                            announcer.reset()
     except KeyboardInterrupt:
         pass
     finally:
