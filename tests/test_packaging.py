@@ -49,8 +49,15 @@ def test_requirements_parse_as_requirement_lines(path):
 
 
 def test_declared_dependencies_match_requirements():
-    """pyproject.toml and requirements.txt must not drift apart."""
-    import tomllib
+    """pyproject.toml and requirements.txt must not drift apart.
+
+    Skipped on Python 3.10, where ``tomllib`` is not in the standard library
+    yet.  Pulling in ``tomli`` just for this would add a dependency to every
+    test run; drift is caught just as well by the 3.11 and 3.12 jobs.
+    """
+    tomllib = pytest.importorskip(
+        "tomllib", reason="tomllib 是 Python 3.11+ 的标准库"
+    )
 
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     declared = {
