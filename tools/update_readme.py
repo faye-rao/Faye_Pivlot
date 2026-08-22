@@ -53,6 +53,7 @@ MODULE_NOTES: dict[str, tuple[str, str]] = {
     "poses.py": ("体式库，每个体式是一组 Check", "无依赖"),
     "evaluator.py": ("单帧打分、左右侧判定、体式识别排序、置信度", "无依赖"),
     "session.py": ("跨帧状态：关键点平滑、体式跟踪迟滞、保持计时、建议节流", "无依赖"),
+    "announce.py": ("语音播报策略：什么时候该说话、说哪一句", "无依赖"),
     "detector.py": ("MediaPipe 封装、模型下载与缓存", "MediaPipe"),
     "render.py": ("画面叠加：骨架、评分面板、中文文字", "OpenCV + Pillow"),
     "console.py": ("终端输出：实时单行播报、单张照片完整报告", "无依赖"),
