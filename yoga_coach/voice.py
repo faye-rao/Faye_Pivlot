@@ -63,6 +63,10 @@ def default_engine_mode() -> str:
     from the speakers.  Rebuilding the engine each time costs a few hundred
     milliseconds and sidesteps it.  Everywhere else a persistent engine is
     both cheaper and reliable.
+
+    Confirmed on Windows with the SAPI5 Huihui voice: three cues under
+    ``fresh`` were all audible, the same three under ``persistent`` produced
+    only the first.  Do not "simplify" this back to a single shared engine.
     """
     return "fresh" if sys.platform.startswith("win") else "persistent"
 
