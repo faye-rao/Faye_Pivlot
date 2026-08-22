@@ -1,8 +1,15 @@
 # Runtime dependencies for yoga_coach.
+#
+# ASCII only, please.  pip decodes this file with the system locale encoding,
+# so a non-ASCII character here makes `pip install -r` crash with a
+# UnicodeDecodeError on any machine whose locale is not UTF-8 -- Windows in
+# particular.  tests/test_packaging.py enforces this.
 mediapipe>=1.0,<2.0
 opencv-python>=4.8
 numpy>=1.24
-pillow>=10.1  # 10.1 起 ImageFont.load_default() 支持 size 参数（无 CJK 字体时的回退路径要用）
+# 10.1 is where ImageFont.load_default() gained its size argument, which the
+# renderer uses when no CJK font is installed.
+pillow>=10.1
 
 # Optional: spoken corrections (`--speak`).  Uncomment to enable.
 # pyttsx3>=2.90

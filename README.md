@@ -51,6 +51,8 @@ sudo apt install libegl1 libgles2 libgl1 libglib2.0-0
 
 **macOS** 需要在「系统设置 → 隐私与安全性 → 摄像头」里给终端授权，否则摄像头打不开且不会报错。
 
+**Windows** 在「设置 → 隐私和安全性 → 摄像头」里确认「摄像头访问」和「让桌面应用访问你的摄像头」都是开——后一项最容易漏，Python 算桌面应用。另外别在 `C:\WINDOWS\system32` 这类系统目录下 clone，没有写权限。
+
 窗口按键：`q` 退出 · `d` 显示/隐藏每项检查的具体数值 · `r` 重新计时。
 
 ---
@@ -458,7 +460,7 @@ python -m pyflakes yoga_coach tests tools
 
 <!-- BEGIN GENERATED: stats -->
 - 体式 **8** 个，检查规则 **55** 条
-- 测试函数 **109** 个（部分带参数化，实际用例数更多），不需要摄像头和 MediaPipe
+- 测试函数 **113** 个（部分带参数化，实际用例数更多），不需要摄像头和 MediaPipe
 <!-- END GENERATED: stats -->
 
 测试用的是手写坐标的"火柴人"骨架（`tests/figures.py`），每个姿势的几何推导都写在注释里。这样"前膝超过脚踝会触发哪条建议"是能精确断言的，不用指望某段录像里刚好还留着这个错误。
