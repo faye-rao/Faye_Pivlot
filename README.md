@@ -451,8 +451,9 @@ BOAT = PoseSpec(
 ## 测试
 
 ```bash
-pip install pytest
+pip install -r requirements-dev.txt
 python -m pytest tests -q
+python -m pyflakes yoga_coach tests tools
 ```
 
 <!-- BEGIN GENERATED: stats -->
@@ -462,11 +463,29 @@ python -m pytest tests -q
 
 测试用的是手写坐标的"火柴人"骨架（`tests/figures.py`），每个姿势的几何推导都写在注释里。这样"前膝超过脚踝会触发哪条建议"是能精确断言的，不用指望某段录像里刚好还留着这个错误。
 
-顺带跑一下静态检查：
+`requirements-dev.txt` 里**没有 MediaPipe**——规则层不 import 它，所以跑测试不需要装。要跑真东西（摄像头）才用 `requirements.txt`。
+
+### 冒烟测试
+
+单元测试碰不到 MediaPipe，这是有代价的：MediaPipe 改了 API、wheel 加载不了原生库、模型 URL 变了，都不会让任何一个测试失败。这个缺口由冒烟测试补上：
 
 ```bash
-python -m pyflakes yoga_coach tests tools
+pip install -r requirements.txt
+python tools/smoke_test.py
 ```
+
+它会真的下载模型、建检测器、跑推理、走完评分和渲染、写一个视频文件。
+
+### CI
+
+`.github/workflows/ci.yml` 两个 job：
+
+| job | 跑什么 | 说明 |
+| --- | --- | --- |
+| `test` | pyflakes + pytest + `update_readme.py --check`，Python 3.10 / 3.11 / 3.12 | 轻依赖，每次 push 都跑 |
+| `smoke` | 装完整依赖 + 系统图形库，跑 `tools/smoke_test.py` 和 CLI | 覆盖 MediaPipe 那一侧 |
+
+README 过期会在 `test` 里挂掉——既因为 `tests/test_readme.py`，也因为那个独立的 `--check` 步骤（后者会直接打出 diff，比 pytest traceback 好读）。
 
 ---
 

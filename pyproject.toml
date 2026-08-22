@@ -13,12 +13,12 @@ dependencies = [
     "mediapipe>=1.0,<2.0",
     "opencv-python>=4.8",
     "numpy>=1.24",
-    "pillow>=10.0",
+    "pillow>=10.1",
 ]
 
 [project.optional-dependencies]
 speech = ["pyttsx3>=2.90"]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "pyflakes>=3.0"]
 
 [project.scripts]
 yoga-coach = "yoga_coach.cli:main"

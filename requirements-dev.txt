@@ -1,0 +1,11 @@
+# Enough to run the test suite and the linter.
+#
+# MediaPipe is deliberately absent: detector.py imports it lazily and no test
+# constructs a detector, so the rules can be tested without it.  The headless
+# OpenCV build is used because the tests draw frames but never open a window.
+# For the real thing (camera, MediaPipe) install requirements.txt instead.
+numpy>=1.24
+opencv-python-headless>=4.8
+pillow>=10.1
+pytest>=7.0
+pyflakes>=3.0

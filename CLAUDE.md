@@ -23,9 +23,22 @@ python tools/update_readme.py
 **2. 跑测试和静态检查。**
 
 ```bash
+pip install -r requirements-dev.txt     # 不含 MediaPipe，跑测试用不上
 python -m pytest tests -q
 python -m pyflakes yoga_coach tests tools
 ```
+
+**3. 动了 `detector.py` 或依赖版本，额外跑一次冒烟测试。** 单元测试碰不到
+MediaPipe，API 改名、wheel 装不上、模型 URL 变了都不会让测试失败：
+
+```bash
+pip install -r requirements.txt
+python tools/smoke_test.py
+```
+
+CI（`.github/workflows/ci.yml`）两个 job 跑的就是上面这些：`test` 是轻依赖的
+pyflakes + pytest + README 同步检查（3.10/3.11/3.12），`smoke` 装完整依赖跑
+`tools/smoke_test.py`。改了依赖或 Python 版本支持范围，记得同步 workflow。
 
 ## 分层：依赖方向严格单向
 
