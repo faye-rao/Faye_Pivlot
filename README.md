@@ -403,6 +403,7 @@ OpenCV 画骨架线条，然后**一次性**转 Pillow 画所有文字——`cv2
 <!-- BEGIN GENERATED: modules -->
 | 模块 | 职责 | 外部依赖 |
 | --- | --- | --- |
+| `announce.py` | 语音播报策略：什么时候该说话、说哪一句 | 无依赖 |
 | `checks.py` | 一条规则的定义与打分：测量 + 目标区间 + 两句建议 | 无依赖 |
 | `cli.py` | 命令行入口、采集循环、四种运行模式 | OpenCV |
 | `console.py` | 终端输出：实时单行播报、单张照片完整报告 | 无依赖 |
@@ -474,7 +475,7 @@ python -m pyflakes yoga_coach tests tools
 
 <!-- BEGIN GENERATED: stats -->
 - 体式 **9** 个，检查规则 **63** 条
-- 测试函数 **116** 个（部分带参数化，实际用例数更多），不需要摄像头和 MediaPipe
+- 测试函数 **159** 个（部分带参数化，实际用例数更多），不需要摄像头和 MediaPipe
 <!-- END GENERATED: stats -->
 
 测试用的是手写坐标的"火柴人"骨架（`tests/figures.py`），每个姿势的几何推导都写在注释里。这样"前膝超过脚踝会触发哪条建议"是能精确断言的，不用指望某段录像里刚好还留着这个错误。
