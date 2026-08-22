@@ -465,11 +465,15 @@ DOWN_DOG = PoseSpec(
             key="hip_angle",
             label=Text("髋部折叠角", "Hip angle"),
             metric=m.joint_angle("{s}_shoulder", "{s}_hip", "{s}_knee"),
-            low=55.0,
+            # No lower bound on purpose.  Pushing the hips higher and further
+            # back closes this angle, and that *is* the pose -- a practitioner
+            # folding to 45 degrees was being told to ease off while their
+            # spine measured longer than at 90.  Folding deep is only a
+            # problem when the back rounds, and `back_long` below is the check
+            # that actually watches for that.
             high=100.0,
             falloff=35.0,
             weight=1.4,
-            when_low=Text("不用折得这么深，脊柱保持延展", "Ease out of the fold, lengthen the spine"),
             when_high=Text("臀部向上向后推高，做出倒 V", "Push the hips up and back into an inverted V"),
             focus=("{s}_hip",),
         ),

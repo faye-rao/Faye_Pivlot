@@ -314,3 +314,53 @@ class TestSideOnCamera:
 
         skeleton = figure(STANDING, hidden=("left_hip",))
         assert m.tilt("left_hip", "right_hip")(skeleton, "left") is None
+
+
+class TestDownDog:
+    """Folding deeper is the pose, not a fault.
+
+    Reported from practice: a correctly held Downward Dog was repeatedly told
+    "ease out of the fold".  Pushing the hips higher and further back closes
+    the hip angle, so the band's lower bound punished the better version of
+    the pose -- while the spine measured *longer*, not rounder.
+    """
+
+    def deeper(self, hip_x, hip_y):
+        return figure(
+            {
+                **DOWN_DOG_SIDE,
+                "left_hip": (hip_x, hip_y),
+                "right_hip": (hip_x + 0.003, hip_y + 0.004),
+            }
+        )
+
+    @pytest.mark.parametrize(
+        "hip_x,hip_y", [(0.52, 0.32), (0.55, 0.26), (0.58, 0.20), (0.60, 0.15)]
+    )
+    def test_a_deep_fold_is_never_corrected(self, hip_x, hip_y):
+        result = evaluate(self.deeper(hip_x, hip_y), get_pose("downdog"))
+        assert result.score > 95
+        assert result.corrections() == [], f"{[c.check.key for c in result.corrections()]}"
+
+    def test_deeper_folds_lengthen_the_spine_rather_than_round_it(self):
+        """The reason there is no lower bound: the thing over-folding could
+        damage is the back, and it improves as the fold deepens."""
+        from yoga_coach import metrics as m
+
+        back = m.joint_angle("{s}_wrist", "{s}_shoulder", "{s}_hip")
+        shallow = back(self.deeper(0.46, 0.44), "left")
+        deep = back(self.deeper(0.60, 0.15), "left")
+        assert deep > shallow
+
+    @pytest.mark.parametrize("hip_x,hip_y", [(0.44, 0.50), (0.42, 0.56)])
+    def test_hips_dropping_towards_a_plank_is_still_caught(self, hip_x, hip_y):
+        result = evaluate(self.deeper(hip_x, hip_y), get_pose("downdog"))
+        assert "hip_angle" in cue_keys(result)
+        advice = next(
+            c.advice() for c in result.corrections(99) if c.check.key == "hip_angle"
+        )
+        assert "推高" in advice.zh
+
+    def test_a_deep_fold_is_still_recognised_as_downward_dog(self):
+        ranked = rank_poses(self.deeper(0.60, 0.15))
+        assert ranked[0].pose.key == "downdog"
