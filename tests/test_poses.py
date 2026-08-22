@@ -6,7 +6,15 @@ distinguishable from the others so ``--pose auto`` picks it.
 """
 
 import pytest
-from figures import PLANK_SIDE, STANDING, TREE_LEFT, WARRIOR_II_RIGHT, figure
+from figures import (
+    DOWN_DOG_SIDE,
+    PLANK_SIDE,
+    STANDING,
+    TREE_LEFT,
+    UP_DOG_SIDE,
+    WARRIOR_II_RIGHT,
+    figure,
+)
 
 from yoga_coach import POSES, evaluate, get_pose, rank_poses
 
@@ -15,6 +23,8 @@ GOOD_FIGURES = {
     "warrior2": WARRIOR_II_RIGHT,
     "plank": PLANK_SIDE,
     "tree": TREE_LEFT,
+    "downdog": DOWN_DOG_SIDE,
+    "updog": UP_DOG_SIDE,
 }
 
 
@@ -190,6 +200,113 @@ class TestPlank:
         # the orientation check tells the two apart.
         result = evaluate(figure(), get_pose("plank"))
         assert "body_horizontal" in cue_keys(result)
+
+
+class TestDownDog:
+    def test_low_hips_are_told_to_push_up_and_back(self):
+        # Hips dropped from 0.420 to 0.600 with the knee moved onto the new
+        # hip -> ankle midpoint, so the legs stay straight and the fold at the
+        # hip opens from 69 to 121 degrees -- past the 100 degree band.
+        low = {
+            **DOWN_DOG_SIDE,
+            "left_hip": (0.560, 0.600),
+            "right_hip": (0.563, 0.604),
+            "left_knee": (0.680, 0.730),
+            "right_knee": (0.683, 0.734),
+        }
+        result = evaluate(figure(low), get_pose("downdog"))
+        assert cue_keys(result)[0] == "hip_angle"
+        advice = next(
+            c.advice() for c in result.corrections(99) if c.check.key == "hip_angle"
+        )
+        assert "推高" in advice.zh
+
+    def test_a_rounded_back_is_flagged(self):
+        # Shoulders sunk towards the floor (0.640 -> 0.790) breaks the
+        # wrist-shoulder-hip line down to 143 degrees.  The stance is
+        # lengthened at the same time so the hip fold stays inside its band
+        # and only the back check fires.
+        rounded = {
+            **DOWN_DOG_SIDE,
+            "left_shoulder": (0.372, 0.790),
+            "right_shoulder": (0.375, 0.794),
+            "left_elbow": (0.261, 0.845),
+            "right_elbow": (0.264, 0.849),
+            "left_knee": (0.715, 0.645),
+            "right_knee": (0.718, 0.649),
+            "left_ankle": (0.870, 0.870),
+            "right_ankle": (0.873, 0.874),
+            "left_heel": (0.910, 0.898),
+            "right_heel": (0.913, 0.902),
+            "left_foot_index": (0.815, 0.900),
+            "right_foot_index": (0.818, 0.904),
+        }
+        result = evaluate(figure(rounded), get_pose("downdog"))
+        assert cue_keys(result) == ["back_long"]
+
+    def test_an_upward_dog_is_not_a_downward_dog(self):
+        result = evaluate(figure(UP_DOG_SIDE), get_pose("downdog"))
+        assert "hip_angle" in cue_keys(result)
+        assert result.score < 70
+
+
+class TestUpDog:
+    def test_hips_resting_on_the_mat_are_flagged(self):
+        # The Cobra a beginner drifts into: pelvis lowered to y=0.890, which
+        # puts it on the wrist -> ankle floor line instead of 0.31 torso
+        # lengths above it.  Everything else still reads as a good Up Dog.
+        cobra = {
+            **UP_DOG_SIDE,
+            "left_hip": (0.346, 0.890),
+            "right_hip": (0.349, 0.894),
+            "left_knee": (0.595, 0.870),
+            "right_knee": (0.598, 0.874),
+        }
+        result = evaluate(figure(cobra), get_pose("updog"))
+        assert cue_keys(result) == ["hips_off_floor"]
+
+    def test_a_plank_is_told_to_lift_the_chest(self):
+        # Plank shares the straight arms, the stacked shoulders and the
+        # straight legs; only the torso angle separates the two, so it had
+        # better be the check that speaks up.
+        result = evaluate(figure(PLANK_SIDE), get_pose("updog"))
+        assert cue_keys(result) == ["torso_incline"]
+        advice = next(
+            c.advice() for c in result.corrections(99) if c.check.key == "torso_incline"
+        )
+        assert "平板" in advice.zh
+
+    def test_a_bent_knee_is_flagged_on_that_side_only(self):
+        bent = {**UP_DOG_SIDE, "left_knee": (0.595, 0.760)}
+        result = evaluate(figure(bent), get_pose("updog"))
+        assert cue_keys(result) == ["leg_straight_left"]
+
+    def test_too_upright_and_too_flat_get_opposite_advice(self):
+        flat = evaluate(figure(PLANK_SIDE), get_pose("updog"))
+        # Hips dragged forward under the shoulders: the torso stands up at 5
+        # degrees off vertical instead of 35.  The knee follows onto the new
+        # hip -> ankle midpoint so the legs stay straight.
+        upright = evaluate(
+            figure(
+                {
+                    **UP_DOG_SIDE,
+                    "left_hip": (0.205, 0.850),
+                    "right_hip": (0.208, 0.854),
+                    "left_knee": (0.524, 0.850),
+                    "right_knee": (0.527, 0.854),
+                }
+            ),
+            get_pose("updog"),
+        )
+        flat_advice = next(
+            c.advice() for c in flat.corrections(99) if c.check.key == "torso_incline"
+        )
+        upright_advice = next(
+            c.advice() for c in upright.corrections(99) if c.check.key == "torso_incline"
+        )
+        assert flat_advice.zh != upright_advice.zh
+        assert "向后" in upright_advice.zh
+        assert "平板" in flat_advice.zh
 
 
 class TestConfidence:

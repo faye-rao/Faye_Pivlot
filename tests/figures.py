@@ -169,6 +169,101 @@ PLANK_SIDE: dict[str, tuple[float, float]] = {
     "right_foot_index": (0.873, 0.664),
 }
 
+#: A side-on Downward Dog, hands at the left and feet at the right.  Built so
+#: that wrist -> shoulder -> hip is one straight line (the "long back") and both
+#: legs are straight: with the floor at y=0.900, the hip is the apex of the
+#: inverted V at (0.560, 0.420), the arm is 0.342 long and the torso 0.289, and
+#: the shoulder sits where those two meet on the wrist->hip line.  That makes
+#: the hip angle (shoulder-hip-knee) 69 degrees, mid-band.
+DOWN_DOG_SIDE: dict[str, tuple[float, float]] = {
+    **STANDING,
+    # head hanging between the arms, following the line of the spine
+    "nose": (0.307, 0.716),
+    "left_ear": (0.335, 0.700),
+    "right_ear": (0.338, 0.704),
+    "left_eye": (0.318, 0.706),
+    "right_eye": (0.321, 0.710),
+    "left_eye_inner": (0.324, 0.704),
+    "right_eye_inner": (0.327, 0.708),
+    "left_eye_outer": (0.312, 0.708),
+    "right_eye_outer": (0.315, 0.712),
+    "mouth_left": (0.305, 0.732),
+    "mouth_right": (0.308, 0.736),
+    # arm: wrist on the floor, elbow at the midpoint -> perfectly straight
+    "left_shoulder": (0.372, 0.640),
+    "right_shoulder": (0.375, 0.644),
+    "left_elbow": (0.261, 0.770),
+    "right_elbow": (0.264, 0.774),
+    "left_wrist": (0.150, 0.900),
+    "right_wrist": (0.153, 0.904),
+    "left_pinky": (0.175, 0.912),
+    "right_pinky": (0.178, 0.916),
+    "left_index": (0.182, 0.906),
+    "right_index": (0.185, 0.910),
+    "left_thumb": (0.162, 0.896),
+    "right_thumb": (0.165, 0.900),
+    # apex of the V
+    "left_hip": (0.560, 0.420),
+    "right_hip": (0.563, 0.424),
+    # legs straight: knee at the midpoint of hip -> ankle
+    "left_knee": (0.680, 0.640),
+    "right_knee": (0.683, 0.644),
+    "left_ankle": (0.800, 0.860),
+    "right_ankle": (0.803, 0.864),
+    # feet flat, heels pressing back and down, toes pointing at the hands
+    "left_heel": (0.840, 0.898),
+    "right_heel": (0.843, 0.902),
+    "left_foot_index": (0.745, 0.900),
+    "right_foot_index": (0.748, 0.904),
+}
+
+#: A side-on Upward Dog, hands at the left and feet at the right.  The floor is
+#: again y=0.900: the wrists are on it, the arms are 0.340 long and vertical, so
+#: the shoulder is at (0.180, 0.560).  The torso is 0.290 long and tilted 35
+#: degrees back from vertical, putting the hip at (0.346, 0.798) -- 0.31 torso
+#: lengths clear of the wrist->ankle floor line.  The legs are straight and
+#: 1.7 torsos long, which fixes the ankle at (0.843, 0.850).
+UP_DOG_SIDE: dict[str, tuple[float, float]] = {
+    **STANDING,
+    # chest open, gaze forward and slightly up
+    "nose": (0.115, 0.492),
+    "left_ear": (0.152, 0.502),
+    "right_ear": (0.155, 0.506),
+    "left_eye": (0.128, 0.486),
+    "right_eye": (0.131, 0.490),
+    "left_eye_inner": (0.134, 0.487),
+    "right_eye_inner": (0.137, 0.491),
+    "left_eye_outer": (0.122, 0.485),
+    "right_eye_outer": (0.125, 0.489),
+    "mouth_left": (0.120, 0.510),
+    "mouth_right": (0.123, 0.514),
+    # arms vertical, elbow at the midpoint -> straight
+    "left_shoulder": (0.180, 0.560),
+    "right_shoulder": (0.183, 0.564),
+    "left_elbow": (0.180, 0.730),
+    "right_elbow": (0.183, 0.734),
+    "left_wrist": (0.180, 0.900),
+    "right_wrist": (0.183, 0.904),
+    "left_pinky": (0.205, 0.912),
+    "right_pinky": (0.208, 0.916),
+    "left_index": (0.212, 0.906),
+    "right_index": (0.215, 0.910),
+    "left_thumb": (0.192, 0.896),
+    "right_thumb": (0.195, 0.900),
+    # pelvis lifted clear of the mat
+    "left_hip": (0.346, 0.798),
+    "right_hip": (0.349, 0.802),
+    "left_knee": (0.595, 0.824),
+    "right_knee": (0.598, 0.828),
+    "left_ankle": (0.843, 0.850),
+    "right_ankle": (0.846, 0.854),
+    # tops of the feet on the floor, so the heel rides above the toes
+    "left_heel": (0.862, 0.868),
+    "right_heel": (0.865, 0.872),
+    "left_foot_index": (0.900, 0.896),
+    "right_foot_index": (0.903, 0.900),
+}
+
 #: Tree with the *left* leg standing and the right foot on the inner thigh.
 TREE_LEFT: dict[str, tuple[float, float]] = {
     **STANDING,
