@@ -13,7 +13,7 @@ from pathlib import Path
 
 import cv2
 
-from . import report
+from . import compat, report
 from .cluster import cluster_candidates
 from .extract import extract, iter_frames_at
 from .grid import GridStyle, build_grid, find_cjk_font
@@ -135,17 +135,29 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     out_dir: Path = args.out
     out_dir.mkdir(parents=True, exist_ok=True)
-    started = time.monotonic()
 
+    # Windows 上 OpenCV 读不了非 ASCII 路径，必要时先复制到临时 ASCII 路径。
+    video, cleanup_video = compat.prepare_video(args.video)
+    try:
+        return _run_pipeline(args, video, out_dir)
+    finally:
+        cleanup_video()
+
+
+def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
+    started = time.monotonic()
     model_path = resolve_model(args.model)
 
     print(f"[1/6] 抽帧与姿态估计（每 {args.interval}s 一帧）…", file=sys.stderr)
     info, frames = extract(
-        args.video,
+        video,
         model_path,
         interval=args.interval,
         work_size=args.work_size,
     )
+    # 复制过的话 info.path 会是临时路径；记录用户给的原路径，
+    # 否则 scores.json 存下的路径下次 `grid` 子命令就找不到了。
+    info.path = args.video
     n_detected = sum(1 for f in frames if f.detected)
     print(
         f"      视频 {info.duration:.0f}s，采样 {len(frames)} 帧，检出人体 {n_detected} 帧",
@@ -217,7 +229,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         cand_dir.mkdir(parents=True, exist_ok=True)
 
     raw_picks = {}
-    for frame_no, bgr in iter_frames_at(args.video, want):
+    for frame_no, bgr in iter_frames_at(video, want):
         if frame_no in pick_frame_nos:
             raw_picks[frame_no] = bgr.copy()
         if not args.no_candidates:
@@ -227,8 +239,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 f"{cand.t:07.2f}s_c{cand.cluster:02d}_{key}"
                 f"_q{cand.quality:.2f}{'_PICK' if cand.selected else ''}.jpg"
             )
-            cv2.imwrite(
-                str(cand_dir / name),
+            compat.imwrite(
+                cand_dir / name,
                 _resize_long_side(bgr, 640),
                 [cv2.IMWRITE_JPEG_QUALITY, 88],
             )
@@ -292,7 +304,11 @@ def cmd_grid(args: argparse.Namespace) -> int:
         return 1
 
     style = _grid_style(args)
-    raw = dict(iter_frames_at(video, [c.frame.frame_no for c in picks]))
+    usable, cleanup_video = compat.prepare_video(video)
+    try:
+        raw = dict(iter_frames_at(usable, [c.frame.frame_no for c in picks]))
+    finally:
+        cleanup_video()
     image = build_grid(raw, picks, style, frames_dir=args.out / "frames")
     grid_path = args.out / DEFAULT_GRID_NAME
     image.save(grid_path, quality=94, subsampling=1)
@@ -301,6 +317,7 @@ def cmd_grid(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    compat.configure_console()
     argv = list(sys.argv[1:] if argv is None else argv)
     # 让 `python -m yoga_grid 视频.mp4` 免写 run 子命令。
     if argv and argv[0] not in {"run", "grid", "-h", "--help"}:

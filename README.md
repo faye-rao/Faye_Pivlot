@@ -49,6 +49,18 @@ sudo apt-get install -y libegl1 libgles2
 python tests/test_geometry.py
 ```
 
+### Windows 补充
+
+PowerShell 如果拒绝执行 `Activate.ps1`（报 *running scripts is disabled*），二选一：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass   # 只对当前窗口放开
+# 或者跳过激活，直接用 venv 里的解释器
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+中文路径（`我的练习.mp4`、输出目录 `瑜伽`）都能正常处理。OpenCV 的文件读写走窄字符 C API，在 Windows 上遇到非 ASCII 路径会静默失败，`compat.py` 已经把这一层绕开：图像用内存编码后由 Python 写字节，视频先试 8.3 短路径、不行再复制一份到临时 ASCII 路径。
+
 ---
 
 ## 用法

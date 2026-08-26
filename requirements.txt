@@ -1,7 +1,12 @@
-# mediapipe 1.0+ 只为 Apple Silicon / Linux / Windows 提供 wheel；
-# Intel 芯片的 Mac 需要落回 0.10.x（其 wheel 覆盖 Python 3.9–3.12）。
-# 两条线用的 tasks API 面一致（mp.tasks.vision / mp.tasks.BaseOptions），
-# 本项目在 1.0.1 和 0.10.21 上都跑过完整流水线，输出逐项相同。
+# NOTE: keep this file pure ASCII. pip decodes requirements.txt using the
+# system locale encoding unless the file has a BOM, so non-ASCII comments
+# break `pip install -r` on Windows (cp1252 / cp936) with a UnicodeDecodeError.
+#
+# MediaPipe 1.0 ships wheels only for Apple Silicon, Linux and Windows.
+# Intel Macs need the 0.10.x line (wheels cover Python 3.9-3.12). Both lines
+# expose the same tasks API this project uses (mp.tasks.vision,
+# mp.tasks.BaseOptions, mp.Image); the full pipeline and the test suite were
+# verified on 0.10.21 and 1.0.1 with identical results. See README.md.
 mediapipe>=0.10.21
 opencv-python-headless>=4.8
 numpy>=1.24

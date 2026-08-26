@@ -337,6 +337,59 @@ def test_sharpness_ranks():
     assert ranks[0] == 0.0 and ranks[1] == 1.0 and 0.0 < ranks[2] < 1.0
 
 
+# --------------------------------------------------------------------------
+# 跨平台兼容（回归测试）
+# --------------------------------------------------------------------------
+
+
+def test_requirements_is_pure_ascii():
+    """requirements.txt 必须是纯 ASCII。
+
+    回归测试：这个文件曾经带中文注释，而 pip 在没有 BOM 时按系统 locale 解码
+    它，于是在 Windows（cp1252 / cp936）上 `pip install -r` 直接抛
+    UnicodeDecodeError —— 装都装不上。
+    """
+    data = (Path(__file__).resolve().parent.parent / "requirements.txt").read_bytes()
+    assert data.isascii(), "requirements.txt 含非 ASCII 字符，会让 Windows 上的 pip 解码失败"
+    for encoding in ("cp1252", "cp936", "utf-8"):
+        data.decode(encoding)  # 任一常见 locale 编码都必须能解开
+
+
+def test_imwrite_handles_unicode_path(tmp_path: Path | None = None):
+    """图像写入要能处理非 ASCII 路径 —— cv2.imwrite 在 Windows 上不行。"""
+    import tempfile
+
+    import cv2
+
+    from yoga_grid import compat
+
+    image = np.zeros((32, 48, 3), dtype=np.uint8)
+    image[:, :24] = (0, 0, 255)
+
+    root = Path(tmp_path) if tmp_path else Path(tempfile.mkdtemp(prefix="yoga_grid_test_"))
+    target = root / "瑜伽输出" / "九宫格.jpg"
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    compat.imwrite(target, image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    assert target.is_file() and target.stat().st_size > 0
+
+    # 读回来验证不是空壳文件（用 imdecode，避免 imread 自己踩同一个坑）
+    decoded = cv2.imdecode(np.frombuffer(target.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+    assert decoded is not None and decoded.shape == image.shape
+
+
+def test_cv2_path_is_passthrough_off_windows():
+    """非 Windows 平台上 cv2_path 必须原样返回，不引入额外行为。"""
+    import os
+
+    from yoga_grid import compat
+
+    if os.name == "nt":
+        return
+    for text in ("/tmp/plain.mp4", "/tmp/我的练习.mp4"):
+        assert compat.cv2_path(Path(text)) == text
+
+
 def _run_all() -> int:
     tests = [
         (name, fn)

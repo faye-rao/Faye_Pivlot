@@ -15,6 +15,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from . import compat
 from . import landmarks as L
 
 
@@ -50,9 +51,7 @@ class FramePose:
 
 
 def probe(path: Path) -> VideoInfo:
-    cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
-        raise RuntimeError(f"打不开视频：{path}")
+    cap = compat.open_capture(path)
     try:
         fps = float(cap.get(cv2.CAP_PROP_FPS))
         if not (fps > 0) or fps > 1000:
@@ -134,10 +133,7 @@ def extract(
         min_pose_presence_confidence=min_confidence,
     )
 
-    cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
-        raise RuntimeError(f"打不开视频：{path}")
-
+    cap = compat.open_capture(path)
     step = max(1, round(info.fps * interval))
     expected = (info.frame_count // step) if info.frame_count > 0 else 0
     frames: list[FramePose] = []
@@ -214,10 +210,7 @@ def iter_frames_at(path: Path, frame_numbers: list[int]) -> Iterator[tuple[int, 
     if not wanted:
         return
 
-    cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
-        raise RuntimeError(f"打不开视频：{path}")
-
+    cap = compat.open_capture(path)
     try:
         target_iter = iter(wanted)
         target = next(target_iter)

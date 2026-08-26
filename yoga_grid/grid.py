@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from . import compat
 from .score import Candidate
 
 # 常见的中文字体，按平台顺序试。列表里只放确定含中日韩字形的字体，
@@ -206,7 +207,7 @@ def build_grid(
             # 存原始分辨率的裁切图，而不是缩到格子大小的那张 ——
             # 单张图她可能另有用处，压缩过就找不回来了。
             name = f"{slot + 1:02d}_{cand.pose.key if cand.pose else 'unknown'}_{cand.t:07.2f}s.jpg"
-            cv2.imwrite(str(frames_dir / name), crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            compat.imwrite(frames_dir / name, crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
 
         left = style.margin + (slot % cols) * (cell + style.gap)
         top = style.margin + (slot // cols) * (cell + style.gap)
