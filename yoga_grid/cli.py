@@ -1,0 +1,320 @@
+"""命令行入口。
+
+    python -m yoga_grid 练习.mp4                    # 完整流水线
+    python -m yoga_grid grid out                    # 改完 scores.json 后只重拼
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import time
+from pathlib import Path
+
+import cv2
+
+from . import report
+from .cluster import cluster_candidates
+from .extract import extract, iter_frames_at
+from .grid import GridStyle, build_grid, find_cjk_font
+from .model import resolve_model
+from .poses import TEMPLATES
+from .score import build_candidates
+from .select import select
+from .stability import auto_threshold, find_holds, velocities
+
+DEFAULT_GRID_NAME = "九宫格.jpg"
+
+
+def _resize_long_side(frame, long_side: int):
+    h, w = frame.shape[:2]
+    longest = max(h, w)
+    if longest <= long_side:
+        return frame
+    scale = long_side / longest
+    return cv2.resize(
+        frame, (max(1, round(w * scale)), max(1, round(h * scale))),
+        interpolation=cv2.INTER_AREA,
+    )
+
+
+def _add_grid_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--size", type=int, default=2048, help="输出边长，像素（默认 2048）")
+    parser.add_argument("--gap", type=int, default=16, help="格子间隔（默认 16）")
+    parser.add_argument("--margin", type=int, default=24, help="外边距（默认 24）")
+    parser.add_argument(
+        "--pad", type=float, default=1.35, dest="pad_factor",
+        help="裁切框相对人体外框的放大倍数（默认 1.35）",
+    )
+    parser.add_argument(
+        "--pad-mode", choices=("blur", "solid", "crop"), default="blur",
+        help="裁切框超出画面时如何补：blur 模糊底图 / solid 纯色 / crop 压进画面（会切到身体）",
+    )
+    parser.add_argument("--no-labels", action="store_true", help="不在格子上写体式名和时间")
+    parser.add_argument("--font", default=None, help="中文字体文件路径（默认自动查找）")
+
+
+def _grid_style(args: argparse.Namespace) -> GridStyle:
+    return GridStyle(
+        size=args.size,
+        gap=args.gap,
+        margin=args.margin,
+        pad_factor=args.pad_factor,
+        pad_mode=args.pad_mode,
+        labels=not args.no_labels,
+        font_path=args.font,
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="yoga_grid",
+        description="从瑜伽练习视频里抓取正位帧，拼成九宫格。",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    run = sub.add_parser("run", help="完整流水线（默认命令）")
+    run.add_argument("video", type=Path, nargs="?", help="视频文件")
+    run.add_argument("-o", "--out", type=Path, default=Path("out"), help="输出目录")
+    run.add_argument("--interval", type=float, default=0.5, help="抽帧间隔，秒")
+    run.add_argument("--work-size", type=int, default=720, help="姿态估计时缩放到的长边像素")
+    run.add_argument(
+        "--model", default="full", help="姿态模型：lite / full / heavy，或 .task 文件路径"
+    )
+    run.add_argument("--count", type=int, default=9, help="要挑几张")
+    run.add_argument(
+        "--vel-thresh", default="auto",
+        help="判定「静止」的速度阈值（躯干长度/秒），auto 为自适应",
+    )
+    run.add_argument("--min-hold", type=float, default=1.0, help="保持段最短时长，秒")
+    run.add_argument("--per-segment", type=int, default=2, help="每个保持段最多留几帧候选")
+    run.add_argument(
+        "--cluster-dist", type=float, default=0.35,
+        help="体式聚类距离阈值，越小分得越细（单位：躯干长度）",
+    )
+    run.add_argument(
+        "--mirror-distinct", action="store_true",
+        help="把左右版本的同一体式当作两个体式（默认当作同一个）",
+    )
+    run.add_argument(
+        "--no-merge-same-pose", action="store_true",
+        help="不合并判为同一体式的多个簇（默认合并，避免九宫格里出现两个下犬式）",
+    )
+    run.add_argument(
+        "--exclude", default="",
+        help="排除的体式 key，逗号分隔，例如 mountain",
+    )
+    run.add_argument("--order", choices=("time", "score"), default="time", help="九宫格排列顺序")
+    run.add_argument("--no-candidates", action="store_true", help="不导出候选帧缩略图")
+    run.add_argument("--list-poses", action="store_true", help="列出内置体式模板后退出")
+    _add_grid_options(run)
+
+    grid = sub.add_parser("grid", help="按 scores.json 里的 selected 标记重新拼图")
+    grid.add_argument("out", type=Path, help="上次运行的输出目录（含 scores.json）")
+    grid.add_argument("--video", type=Path, default=None, help="视频路径（默认取 scores.json 里记录的）")
+    _add_grid_options(grid)
+
+    return parser
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    if args.list_poses:
+        print("内置体式模板：")
+        for template in TEMPLATES:
+            kind = "对称" if template.symmetric else "左右"
+            print(f"  {template.key:10s} {template.zh:6s} {template.en:24s} ({kind}，门槛 {template.min_score:.2f})")
+        return 0
+
+    if args.video is None:
+        print("请指定视频文件。用法：python -m yoga_grid 练习.mp4", file=sys.stderr)
+        return 2
+    if not args.video.is_file():
+        print(f"找不到视频：{args.video}", file=sys.stderr)
+        return 2
+
+    out_dir: Path = args.out
+    out_dir.mkdir(parents=True, exist_ok=True)
+    started = time.monotonic()
+
+    model_path = resolve_model(args.model)
+
+    print(f"[1/6] 抽帧与姿态估计（每 {args.interval}s 一帧）…", file=sys.stderr)
+    info, frames = extract(
+        args.video,
+        model_path,
+        interval=args.interval,
+        work_size=args.work_size,
+    )
+    n_detected = sum(1 for f in frames if f.detected)
+    print(
+        f"      视频 {info.duration:.0f}s，采样 {len(frames)} 帧，检出人体 {n_detected} 帧",
+        file=sys.stderr,
+    )
+    if n_detected == 0:
+        print("没有任何一帧检出人体。检查画面里人是否足够大、是否被严重遮挡。", file=sys.stderr)
+        return 1
+
+    print("[2/6] 检测保持段…", file=sys.stderr)
+    vel = velocities(frames)
+    threshold = (
+        auto_threshold(vel) if args.vel_thresh == "auto" else float(args.vel_thresh)
+    )
+    segments = find_holds(frames, vel, threshold, min_hold=args.min_hold)
+    print(
+        f"      速度阈值 {threshold:.3f} 躯干/秒，找到 {len(segments)} 个保持段",
+        file=sys.stderr,
+    )
+    if not segments:
+        print(
+            "没找到保持段。可以放宽条件：--min-hold 0.5，或 --vel-thresh 0.6。",
+            file=sys.stderr,
+        )
+        return 1
+
+    print("[3/6] 候选帧打分…", file=sys.stderr)
+    exclude = frozenset(k.strip() for k in args.exclude.split(",") if k.strip())
+    candidates = build_candidates(
+        frames, segments, vel, threshold,
+        per_segment=args.per_segment,
+        exclude_poses=exclude,
+    )
+    recognized = sum(1 for c in candidates if c.pose is not None)
+    print(f"      {len(candidates)} 张候选，其中 {recognized} 张识别出体式", file=sys.stderr)
+    if not candidates:
+        print("保持段里没有可用帧。", file=sys.stderr)
+        return 1
+
+    print("[4/6] 体式聚类…", file=sys.stderr)
+    n_clusters = cluster_candidates(
+        candidates, threshold=args.cluster_dist, mirror_same=not args.mirror_distinct
+    )
+    print(f"      聚出 {n_clusters} 个体式", file=sys.stderr)
+
+    selection = select(
+        candidates,
+        count=args.count,
+        order=args.order,
+        merge_same_pose=not args.no_merge_same_pose,
+    )
+    print(f"      合并同体式后 {selection.n_clusters} 个体式", file=sys.stderr)
+    if selection.n_filled:
+        print(
+            f"      ⚠️ 体式种类不足 {args.count} 个，{selection.n_filled} 格用同体式的另一次保持补位",
+            file=sys.stderr,
+        )
+
+    print("[5/6] 回读原分辨率帧…", file=sys.stderr)
+    pick_frame_nos = {c.frame.frame_no for c in selection.picks}
+    want = (
+        sorted({c.frame.frame_no for c in candidates})
+        if not args.no_candidates
+        else sorted(pick_frame_nos)
+    )
+    cand_by_frame = {c.frame.frame_no: c for c in candidates}
+    cand_dir = out_dir / "candidates"
+    if not args.no_candidates:
+        cand_dir.mkdir(parents=True, exist_ok=True)
+
+    raw_picks = {}
+    for frame_no, bgr in iter_frames_at(args.video, want):
+        if frame_no in pick_frame_nos:
+            raw_picks[frame_no] = bgr.copy()
+        if not args.no_candidates:
+            cand = cand_by_frame[frame_no]
+            key = cand.pose.key if cand.pose else "unknown"
+            name = (
+                f"{cand.t:07.2f}s_c{cand.cluster:02d}_{key}"
+                f"_q{cand.quality:.2f}{'_PICK' if cand.selected else ''}.jpg"
+            )
+            cv2.imwrite(
+                str(cand_dir / name),
+                _resize_long_side(bgr, 640),
+                [cv2.IMWRITE_JPEG_QUALITY, 88],
+            )
+
+    print("[6/6] 合成九宫格…", file=sys.stderr)
+    style = _grid_style(args)
+    if style.labels and args.font is None and find_cjk_font() is None:
+        print("      找不到中文字体，标签改用英文体式名（可用 --font 指定）", file=sys.stderr)
+
+    image = build_grid(raw_picks, selection.picks, style, frames_dir=out_dir / "frames")
+    grid_path = out_dir / DEFAULT_GRID_NAME
+    image.save(grid_path, quality=94, subsampling=1)
+
+    params = {
+        "interval": args.interval,
+        "work_size": args.work_size,
+        "model": args.model,
+        "vel_threshold": round(threshold, 4),
+        "min_hold": args.min_hold,
+        "per_segment": args.per_segment,
+        "cluster_dist": args.cluster_dist,
+        "mirror_distinct": args.mirror_distinct,
+        "exclude": sorted(exclude),
+        "count": args.count,
+        "order": args.order,
+        "sampled_frames": len(frames),
+    }
+    report.dump_json(
+        out_dir / "scores.json", info, candidates, selection, params,
+        n_detected=n_detected, n_segments=len(segments),
+    )
+    report.write_report(
+        out_dir / "report.md", info, selection,
+        n_candidates=len(candidates), grid_name=DEFAULT_GRID_NAME,
+    )
+
+    elapsed = time.monotonic() - started
+    print(f"\n完成，用时 {elapsed:.0f}s", file=sys.stderr)
+    print(f"  九宫格   {grid_path}", file=sys.stderr)
+    print(f"  单张     {out_dir / 'frames'}", file=sys.stderr)
+    if not args.no_candidates:
+        print(f"  候选帧   {cand_dir}", file=sys.stderr)
+    print(f"  复盘     {out_dir / 'report.md'}", file=sys.stderr)
+    print(f"  分数     {out_dir / 'scores.json'}", file=sys.stderr)
+    return 0
+
+
+def cmd_grid(args: argparse.Namespace) -> int:
+    scores = args.out / "scores.json"
+    if not scores.is_file():
+        print(f"找不到 {scores}", file=sys.stderr)
+        return 2
+
+    recorded_video, picks = report.load_picks(scores)
+    video = args.video or recorded_video
+    if not video.is_file():
+        print(f"找不到视频：{video}（可用 --video 指定）", file=sys.stderr)
+        return 2
+    if not picks:
+        print("scores.json 里没有 selected 为 true 的帧。", file=sys.stderr)
+        return 1
+
+    style = _grid_style(args)
+    raw = dict(iter_frames_at(video, [c.frame.frame_no for c in picks]))
+    image = build_grid(raw, picks, style, frames_dir=args.out / "frames")
+    grid_path = args.out / DEFAULT_GRID_NAME
+    image.save(grid_path, quality=94, subsampling=1)
+    print(f"已用 {len(picks)} 张重拼：{grid_path}", file=sys.stderr)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # 让 `python -m yoga_grid 视频.mp4` 免写 run 子命令。
+    if argv and argv[0] not in {"run", "grid", "-h", "--help"}:
+        argv.insert(0, "run")
+
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command == "grid":
+        return cmd_grid(args)
+    if args.command == "run":
+        return cmd_run(args)
+    parser.print_help()
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
