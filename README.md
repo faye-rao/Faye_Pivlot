@@ -14,17 +14,40 @@ python -m yoga_grid 我的练习.mp4
 
 ## 安装
 
+建议用虚拟环境，别装进系统 Python：
+
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Linux 上 MediaPipe 还需要两个系统图形库（macOS / Windows 不需要）：
+**Python 版本**：用 3.10 – 3.12。MediaPipe 目前没有 3.13 的 wheel。
+
+**平台差异**（`requirements.txt` 已经把两条线都放开，pip 会自动选）：
+
+| 机器 | 装到的 MediaPipe |
+|------|------------------|
+| Apple Silicon Mac（M 系列） | 1.0.x |
+| Intel Mac | 0.10.x —— 1.0 没有 Intel Mac 的 wheel |
+| Linux x86_64 / aarch64 | 1.0.x |
+| Windows | 1.0.x |
+
+两条线用的是同一套 tasks API，本项目在 1.0.1 和 0.10.21 上都跑过完整流水线，输出逐项相同。
+
+**Linux 额外需要两个系统图形库**（macOS / Windows 不需要）：
 
 ```bash
 sudo apt-get install -y libegl1 libgles2
 ```
 
 首次运行会自动下载约 9 MB 的姿态模型到 `~/.cache/yoga_grid/models/`，之后复用。
+
+装完先跑一遍测试确认环境没问题（不需要视频）：
+
+```bash
+python tests/test_geometry.py
+```
 
 ---
 

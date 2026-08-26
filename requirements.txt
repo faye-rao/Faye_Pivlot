@@ -1,4 +1,8 @@
-mediapipe>=1.0.0
+# mediapipe 1.0+ 只为 Apple Silicon / Linux / Windows 提供 wheel；
+# Intel 芯片的 Mac 需要落回 0.10.x（其 wheel 覆盖 Python 3.9–3.12）。
+# 两条线用的 tasks API 面一致（mp.tasks.vision / mp.tasks.BaseOptions），
+# 本项目在 1.0.1 和 0.10.21 上都跑过完整流水线，输出逐项相同。
+mediapipe>=0.10.21
 opencv-python-headless>=4.8
 numpy>=1.24
 pillow>=10.0
