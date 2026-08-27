@@ -2,6 +2,7 @@
 
     python -m yoga_grid 练习.mp4                    # 完整流水线
     python -m yoga_grid grid out                    # 改完 scores.json 后只重拼
+    python -m yoga_grid rescore out                 # 用当前模板重算识别，跳过姿态估计
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from pathlib import Path
 
 import cv2
 
-from . import compat, faces, reference, report
+from . import compat, faces, reference, report, rescore
 from .cluster import cluster_candidates
 from .compare import build_comparison
 from .explain import explain
@@ -131,6 +132,27 @@ def build_parser() -> argparse.ArgumentParser:
     grid.add_argument("--no-face-mask", action="store_true", help="不给露出的人脸盖卡通面具")
     grid.add_argument("--no-compare", action="store_true", help="不重新生成标准体式对照图")
     _add_grid_options(grid)
+
+    again = sub.add_parser(
+        "rescore",
+        help="用当前模板从 scores.json 的骨架重算识别与选帧（跳过姿态估计，秒级）",
+    )
+    again.add_argument("out", type=Path, help="上次运行的输出目录（含 scores.json）")
+    again.add_argument("--video", type=Path, default=None,
+                       help="视频路径（默认取 scores.json 里记录的）")
+    again.add_argument("--count", type=int, default=9, help="要挑几张")
+    again.add_argument("--cluster-dist", type=float, default=0.35,
+                       help="体式聚类距离阈值，越小分得越细（单位：躯干长度）")
+    again.add_argument("--mirror-distinct", action="store_true",
+                       help="把左右版本的同一体式当作两个体式")
+    again.add_argument("--no-merge-same-pose", action="store_true",
+                       help="不合并判为同一体式的多个簇")
+    again.add_argument("--exclude", default="", help="排除的体式 key，逗号分隔")
+    again.add_argument("--order", choices=("time", "score"), default="time",
+                       help="九宫格排列顺序")
+    again.add_argument("--no-face-mask", action="store_true", help="不给露出的人脸盖卡通面具")
+    again.add_argument("--no-compare", action="store_true", help="不生成标准体式对照图")
+    _add_grid_options(again)
 
     ref = sub.add_parser("reference", help="导出标准体式库（每个体式一张对照卡）")
     ref.add_argument("-o", "--out", type=Path, default=Path("体式库"), help="输出目录")
@@ -381,6 +403,111 @@ def cmd_grid(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rescore(args: argparse.Namespace) -> int:
+    scores = args.out / "scores.json"
+    if not scores.is_file():
+        print(f"找不到 {scores}", file=sys.stderr)
+        return 2
+
+    recorded_video, candidates, payload = report.load_candidates(scores)
+    video = args.video or recorded_video
+    if not video.is_file():
+        print(f"找不到视频：{video}（可用 --video 指定）", file=sys.stderr)
+        return 2
+
+    candidates, dropped = rescore.usable(candidates)
+    if rescore.warn_if_no_landmarks(dropped, dropped + len(candidates)):
+        return 1
+    if not candidates:
+        print("scores.json 里没有可用候选。", file=sys.stderr)
+        return 1
+
+    started = time.monotonic()
+    exclude = frozenset(k.strip() for k in args.exclude.split(",") if k.strip())
+
+    print(f"[1/4] 用当前模板重新识别 {len(candidates)} 个候选…", file=sys.stderr)
+    recognized = rescore.rematch(candidates, exclude)
+    print(f"      识别出体式 {recognized}/{len(candidates)}", file=sys.stderr)
+
+    print("[2/4] 体式聚类与选帧…", file=sys.stderr)
+    n_clusters = cluster_candidates(
+        candidates, threshold=args.cluster_dist, mirror_same=not args.mirror_distinct
+    )
+    selection = select(
+        candidates, count=args.count, order=args.order,
+        merge_same_pose=not args.no_merge_same_pose,
+    )
+    print(
+        f"      聚出 {n_clusters} 个体式，合并同体式后 {selection.n_clusters} 个，"
+        f"入选 {len(selection.picks)} 张",
+        file=sys.stderr,
+    )
+    if selection.n_filled:
+        print(f"      ⚠️ {selection.n_filled} 格用同体式的另一次保持补位", file=sys.stderr)
+    if len(selection.picks) < args.count:
+        print(
+            f"      ⚠️ 候选只够 {len(selection.picks)} 张（要 {args.count} 张）；"
+            "要更多候选得重跑完整流水线并放宽 --interval / --min-hold",
+            file=sys.stderr,
+        )
+
+    print("[3/4] 回读入选帧的原分辨率像素…", file=sys.stderr)
+    usable_video, cleanup_video = compat.prepare_video(video)
+    by_frame = {c.frame.frame_no: c for c in selection.picks}
+    n_masked = 0
+    try:
+        raw = {}
+        for frame_no, bgr in iter_frames_at(usable_video, list(by_frame)):
+            if not args.no_face_mask:
+                n_masked += faces.mask_face(bgr, by_frame[frame_no].frame.lm)
+            raw[frame_no] = bgr
+    finally:
+        cleanup_video()
+    if not args.no_face_mask:
+        print(f"      {n_masked}/{len(by_frame)} 帧检测到人脸并已遮挡", file=sys.stderr)
+
+    print("[4/4] 重出九宫格与对照图…", file=sys.stderr)
+    style = _grid_style(args)
+    image = build_grid(raw, selection.picks, style, frames_dir=args.out / "frames")
+    grid_path = args.out / DEFAULT_GRID_NAME
+    image.save(grid_path, quality=94, subsampling=1)
+
+    compare_path = None
+    if not args.no_compare:
+        compare_path = args.out / DEFAULT_COMPARE_NAME
+        build_comparison(raw, selection.picks, style, font_path=args.font).save(
+            compare_path, quality=92, subsampling=1
+        )
+
+    info = rescore.video_info_from_payload(payload, video)
+    params = dict(payload.get("params") or {})
+    params.update({
+        "count": args.count,
+        "cluster_dist": args.cluster_dist,
+        "mirror_distinct": args.mirror_distinct,
+        "exclude": sorted(exclude),
+        "order": args.order,
+        "rescored": True,
+    })
+    report.dump_json(
+        scores, info, candidates, selection, params,
+        n_detected=int((payload.get("summary") or {}).get("detected_frames") or 0),
+        n_segments=int((payload.get("summary") or {}).get("hold_segments") or 0),
+    )
+    report.write_report(
+        args.out / "report.md", info, selection,
+        n_candidates=len(candidates), grid_name=DEFAULT_GRID_NAME,
+    )
+
+    print(f"\n完成，用时 {time.monotonic() - started:.1f}s（未重跑姿态估计）", file=sys.stderr)
+    print(f"  九宫格   {grid_path}", file=sys.stderr)
+    if compare_path is not None:
+        print(f"  对照图   {compare_path}", file=sys.stderr)
+    print(f"  复盘     {args.out / 'report.md'}", file=sys.stderr)
+    print(f"  分数     {scores}", file=sys.stderr)
+    return 0
+
+
 def cmd_reference(args: argparse.Namespace) -> int:
     from .poses import TEMPLATES
 
@@ -407,11 +534,14 @@ def main(argv: list[str] | None = None) -> int:
     compat.configure_console()
     argv = list(sys.argv[1:] if argv is None else argv)
     # 让 `python -m yoga_grid 视频.mp4` 免写 run 子命令。
-    if argv and argv[0] not in {"run", "grid", "explain", "reference", "-h", "--help"}:
+    known = {"run", "grid", "rescore", "explain", "reference", "-h", "--help"}
+    if argv and argv[0] not in known:
         argv.insert(0, "run")
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "rescore":
+        return cmd_rescore(args)
     if args.command == "reference":
         return cmd_reference(args)
     if args.command == "explain":

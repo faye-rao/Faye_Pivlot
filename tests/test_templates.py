@@ -163,6 +163,14 @@ def test_restore_landmarks_handles_both_formats():
     assert _restore_landmarks(None, 100, 100) == (None, None)
     assert _restore_landmarks([], 100, 100) == (None, None)
 
+    # 33×2 但内容其实是原始归一化坐标（值全在 [0,1]、髋中点远离原点）必须被拒收：
+    # 误当成骨架会让所有姿势的距离塌到极小、聚成一簇 —— 结果全错却不报错。
+    bogus = [[float(x) / 1000.0, float(y) / 1000.0] for x, y in pts]
+    assert _restore_landmarks(bogus, 1000, 1000) == (None, None)
+
+    # 形状不对的也要拒收
+    assert _restore_landmarks([[0.0, 0.0]], 100, 100) == (None, None)
+
 
 def test_every_pose_renders():
     """19 个体式的线稿和对照卡都要能渲染出来，不抛异常。"""

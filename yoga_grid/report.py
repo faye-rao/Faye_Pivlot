@@ -44,6 +44,21 @@ def _pose_dict(pose: PoseMatch | None) -> dict[str, Any] | None:
     }
 
 
+def _landmarks_field(cand: Candidate, include: bool) -> dict[str, Any]:
+    """写回 landmarks，优先原始关键点（33×3），退而写归一化骨架（33×2）。
+
+    退路是为了 ``rescore``：从早期格式的文件重算后再落盘时，若只认原始关键点就
+    会把 landmarks 整个丢掉，这个文件之后就再也不能重算了 —— 一次重算把重算能力
+    自己弄没了。两种形状读取端都认（见 ``_restore_landmarks``），所以有什么写什么。
+    """
+    if not include:
+        return {}
+    source = cand.frame.lm if cand.frame.lm is not None else cand.frame.norm
+    if source is None:
+        return {}
+    return {"landmarks": [[round(float(v), 4) for v in pt] for pt in source]}
+
+
 def dump_json(
     path: Path,
     info: VideoInfo,
@@ -102,11 +117,7 @@ def dump_json(
                 "selected": c.selected,
                 "grid_slot": c.grid_slot,
                 "note": c.note,
-                **(
-                    {"landmarks": [[round(float(v), 4) for v in pt] for pt in c.frame.lm]}
-                    if include_landmarks and c.frame.lm is not None
-                    else {}
-                ),
+                **_landmarks_field(c, include_landmarks),
             }
             for c in candidates
         ],
@@ -140,7 +151,28 @@ def _restore_landmarks(
         return lm, norm
 
     # 早期格式：已是归一化骨架，直接用；没有置信度，lm 留空。
+    if not _looks_normalised(array):
+        # 误判会静默产出垃圾（所有姿势挤成一簇），宁可拒收。
+        return None, None
     return None, array
+
+
+def _looks_normalised(array: np.ndarray) -> bool:
+    """检查一个 33×2 数组是否真的是躯干归一化骨架。
+
+    归一化骨架有两个决定性特征：髋中点落在原点，肩中点到髋中点的距离约等于 1
+    （因为那个距离**就是**归一化用的单位）。而一份被误当成骨架的原始归一化坐标
+    数值全在 [0,1] 里、髋中点远离原点，两条都不满足。
+
+    值得单独校验：列数虽然能区分本项目写过的两种格式，但一旦判错，后果是所有
+    姿势的距离都塌到极小、聚成一簇，结果全错却不报错 —— 这种失败最难查。
+    """
+    hip = (array[L.IDX["left_hip"]] + array[L.IDX["right_hip"]]) / 2.0
+    shoulder = (array[L.IDX["left_shoulder"]] + array[L.IDX["right_shoulder"]]) / 2.0
+    if float(np.linalg.norm(hip)) > 0.25:
+        return False
+    torso = float(np.linalg.norm(shoulder - hip))
+    return 0.5 <= torso <= 2.0
 
 
 def load_candidates(
