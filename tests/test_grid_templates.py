@@ -10,6 +10,12 @@
   而上举时两腕同样等高）；
 * 侧板式被平板式认走（平板式只查主侧那只手，侧板式撑地的手蒙混过关）；
 * 反板式被平板式认走（2D 剪影近乎镜像，缺头部朝向这一对称判据）。
+* **蹲姿被鸽子式认走，排除鸽子式后又被半神猴式认走**（真实视频，2026-08）。
+  蹲姿两条腿都折到约 64°，鸽子式六项里只有「后腿向后伸直」正确地判 0 分，
+  另外五项被低髋位满足，于是以 0.77 越过门槛。这一条和上面几条性质不同：
+  **蹲姿在模板集里根本没有对应模板**，所以补判据补不到它自己身上，只能给
+  被它蒙混的模板加定义性门槛（见 `poses.Gate`）。它也暴露了这张网的盲区
+  —— 只测模板互相之间，从不测「库里没有的体式」，见下面的负例测试。
 
 每一条都是先在真实数据上出错、再回头补判据。这个测试把补上的判据钉死：
 遍历所有标准骨架，断言每具骨架的最高分模板就是它自己。加模板或调容差时
@@ -25,9 +31,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from yoga_grid.reference import CANONICAL  # noqa: E402
+from yoga_grid.reference import CANONICAL, skeleton  # noqa: E402
 from yoga_grid import landmarks as L  # noqa: E402
 from yoga_grid.poses import TEMPLATES, TEMPLATES_BY_KEY, match_pose, score_by_key  # noqa: E402
+
+
+def _canonical(key: str):
+    """CANONICAL 存的是构造函数，取出实际骨架。"""
+    value = CANONICAL[key]
+    return value() if callable(value) else value
 
 
 def test_every_template_has_a_canonical_skeleton():
@@ -196,6 +208,77 @@ def test_mirrored_skeleton_scores_the_same():
         assert abs(a.score - b.score) < 1e-6, (
             f"{key} 镜像后得分从 {a.score:.4f} 变为 {b.score:.4f}"
         )
+
+
+# --------------------------------------------------------------------------
+# 负例：图库里**没有**模板的体式。这张网原先只测模板互相之间，于是蹲姿
+# （Malasana，没有模板）被鸽子式认走 0.77、排除鸽子式后又被半神猴式认走
+# 0.71，两次都溜过去了。没有模板的体式必须回到「未识别体式」。
+# --------------------------------------------------------------------------
+
+#: 手搭蹲姿：躯干 100，脚掌落地，膝深屈外开，髋沉到接近脚跟。小腿近乎竖直
+#: （膝在踝正上方偏前），大腿向后上，膝角约 64 度 —— 真实视频里量到 38 度，
+#: 同为「两腿都折着」，这里取偏保守的 64 度，门槛要连它一起拦住才算过关。
+_SQUAT_LEGS = dict(
+    left_hip=(-68, 40), right_hip=(-52, 43),
+    left_knee=(25, 0), right_knee=(40, 4),
+    left_ankle=(20, 100), right_ankle=(36, 104),
+    left_heel=(6, 104), right_heel=(22, 108),
+    left_foot_index=(48, 106), right_foot_index=(64, 110),
+)
+
+#: 躯干直立的蹲姿 —— 朝向门槛能拦住半神猴式，但拦不住鸽子式。
+SQUAT_UPRIGHT = skeleton(
+    nose=(-58, -70), left_ear=(-48, -60), right_ear=(-40, -58),
+    left_eye=(-54, -72), right_eye=(-46, -70),
+    mouth_left=(-56, -58), mouth_right=(-48, -56),
+    left_shoulder=(-56, -55), right_shoulder=(-40, -52),
+    left_elbow=(-40, -14), right_elbow=(-26, -12),
+    left_wrist=(-44, 8), right_wrist=(-36, 10),
+    **_SQUAT_LEGS,
+)
+
+#: 躯干前倾的蹲姿 —— 这一版落进半神猴式的朝向区间，是真实视频里被认走的那种。
+SQUAT_FOLDED = skeleton(
+    nose=(-30, -46), left_ear=(-24, -36), right_ear=(-16, -34),
+    left_eye=(-26, -48), right_eye=(-18, -46),
+    mouth_left=(-28, -34), mouth_right=(-20, -32),
+    left_shoulder=(-34, -28), right_shoulder=(-18, -25),
+    left_elbow=(-26, 6), right_elbow=(-12, 8),
+    left_wrist=(-38, 12), right_wrist=(-30, 14),
+    **_SQUAT_LEGS,
+)
+
+NON_TEMPLATE_POSES = {"蹲姿·躯干直立": SQUAT_UPRIGHT, "蹲姿·躯干前倾": SQUAT_FOLDED}
+
+
+def test_a_squat_is_not_claimed_by_any_template():
+    for name, pts in NON_TEMPLATE_POSES.items():
+        match = match_pose(L.normalize(pts))
+        assert match is None, (
+            f"{name} 被 {match.zh} 认走（{match.score:.3f}）—— "
+            f"库里没有蹲姿模板，它应该回到未识别体式"
+        )
+
+
+def test_the_gate_is_what_rejects_it_not_a_lucky_threshold():
+    """区别对待「门槛归零」和「刚好没过 min_score」。
+
+    后者靠的是分数差，容差一放宽就会翻过去；前者是定义性的。
+    """
+    for name, pts in NON_TEMPLATE_POSES.items():
+        norm = L.normalize(pts)
+        for key in ("pigeon", "ardha_hanumanasana"):
+            m = score_by_key(norm, key)
+            assert m.gate == 0.0, f"{name} 在 {key} 上门槛系数应为 0，实为 {m.gate}"
+
+
+def test_gates_do_not_touch_the_poses_they_guard():
+    """加门槛不能误伤本来就该匹配的体式。"""
+    for key in ("pigeon", "ardha_hanumanasana"):
+        m = score_by_key(L.normalize(_canonical(key)), key)
+        assert m.gate == 1.0, f"{key} 的标准骨架被自己的门槛挡住了"
+        assert m.score > 0.9, f"{key} 标准骨架自身分只有 {m.score:.3f}"
 
 
 def _run_all() -> int:
