@@ -1,0 +1,13 @@
+# NOTE: keep this file pure ASCII. pip decodes requirements.txt using the
+# system locale encoding unless the file has a BOM, so non-ASCII comments
+# break `pip install -r` on Windows (cp1252 / cp936) with a UnicodeDecodeError.
+#
+# MediaPipe 1.0 ships wheels only for Apple Silicon, Linux and Windows.
+# Intel Macs need the 0.10.x line (wheels cover Python 3.9-3.12). Both lines
+# expose the same tasks API this project uses (mp.tasks.vision,
+# mp.tasks.BaseOptions, mp.Image); the full pipeline and the test suite were
+# verified on 0.10.21 and 1.0.1 with identical results. See README.md.
+mediapipe>=0.10.21
+opencv-python-headless>=4.8
+numpy>=1.24
+pillow>=10.0
