@@ -114,6 +114,37 @@ def test_standing_templates_reject_prone_bodies():
             )
 
 
+def test_every_pose_has_cues_and_annotations():
+    """每个体式都要有发力要点，且要点锚点必须能解析。
+
+    锚点写错（拼错关键点名、用了不存在的虚拟点）在渲染时才会炸，而渲染只在
+    出图时才跑 —— 放到测试里，改数据就能立刻发现。
+    """
+    from yoga_grid.landmarks import _VIRTUAL
+    from yoga_grid.reference import ANNOTATED, CUES
+
+    keys = set(CANONICAL)
+    assert not keys - set(CUES), f"缺纯文字要点：{sorted(keys - set(CUES))}"
+    assert not keys - set(ANNOTATED), f"缺带锚点要点：{sorted(keys - set(ANNOTATED))}"
+
+    valid = set(L.NAMES) | set(_VIRTUAL)
+    for key, cue_list in ANNOTATED.items():
+        for cue in cue_list:
+            assert cue.anchor in valid, f"{key}：锚点 {cue.anchor!r} 不是有效关键点"
+            assert cue.text.strip(), f"{key}：要点文字为空"
+
+
+def test_every_pose_renders():
+    """19 个体式的线稿和对照卡都要能渲染出来，不抛异常。"""
+    from yoga_grid.reference import render_pose, render_reference_card
+
+    for key in CANONICAL:
+        art = render_pose(key, 160)
+        assert art.size == (160, 160)
+        card = render_reference_card(key, width=700)
+        assert card.size[0] == 700 and card.size[1] > 200
+
+
 def test_mirrored_skeleton_scores_the_same():
     """左右镜像的同一体式，在自身模板上得分必须一致。
 

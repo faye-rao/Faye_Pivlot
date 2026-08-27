@@ -695,6 +695,104 @@ _DOWN = (0.0, 1.0)
 # 带锚点的要点。上面的 CUES 是纯文字版（供 report.md 用），这里是画在图上的版本，
 # 一条要点只讲一件事，才好用引线指到具体部位。
 ANNOTATED: dict[str, tuple[Cue, ...]] = {
+    "mountain": (
+        Cue("双肩后展下沉", "left_shoulder", _DOWN),
+        Cue("耳、肩、髋在一条铅垂线上", "spine_mid"),
+        Cue("尾骨微向下，肋骨不外翻", "hip_mid", _DOWN),
+        Cue("大腿前侧上提，膝不锁死", "left_knee", _UP),
+        Cue("双脚四角均匀踩地", "left_foot_index", _DOWN),
+    ),
+    "uttanasana": (
+        Cue("从髋部折叠，不是从腰弯", "hip_mid"),
+        Cue("坐骨向上，与脚跟对抗", "hip_mid", _UP),
+        Cue("颈部完全放松，\n头顶自然垂向地面", "nose", _DOWN),
+        Cue("膝可微屈，优先保住背部延展", "left_knee"),
+        Cue("双脚踩实，重心在足弓", "left_foot_index", _DOWN),
+    ),
+    "warrior1": (
+        Cue("肩胛下沉，不耸肩挤颈", "left_shoulder", _DOWN),
+        Cue("双臂上举，从腋窝向上延展", "left_wrist", _UP),
+        Cue("髋部朝向正前方，尾骨向下", "hip_mid", _DOWN),
+        Cue("前膝对准第二、三脚趾，不内塌", "left_knee"),
+        Cue("后脚外缘压实，后腿主动伸直", "right_ankle", _DOWN),
+    ),
+    "warrior2": (
+        Cue("双臂向两端延展，肩胛下沉", "left_wrist", (-1.0, 0.0)),
+        Cue("躯干保持正中，不前倾不侧倒", "spine_mid"),
+        Cue("前膝在踝正上方，\n对准第二、三脚趾", "left_knee", _DOWN),
+        Cue("后腿从髋到脚跟主动伸直", "right_knee"),
+        Cue("后脚外缘下压", "right_foot_index", _DOWN),
+    ),
+    "warrior3": (
+        Cue("从指尖到抬起腿的脚跟\n拉成一条直线", "left_wrist", (-1.0, 0.0)),
+        Cue("核心收紧，肋骨不塌", "spine_mid", _UP),
+        Cue("骨盆保持水平，\n抬起腿的髋不外翻", "hip_mid"),
+        Cue("支撑腿大腿收紧，膝不锁死", "left_knee", _UP),
+        Cue("抬起腿向后蹬远", "right_ankle", (1.0, 0.0)),
+    ),
+    "triangle": (
+        Cue("上手向天空延展", "right_wrist", _UP),
+        Cue("胸腔朝侧上方打开，不向下扣", "spine_mid"),
+        Cue("两侧侧腰等长，下侧腰不塌", "hip_mid"),
+        Cue("下手轻放，\n重量不压在腿上", "left_wrist", _DOWN),
+        Cue("前腿大腿上提，膝不超伸", "left_knee", _UP),
+        Cue("双腿主动伸直踩实", "right_ankle", _DOWN),
+    ),
+    "parsvakonasana": (
+        Cue("上臂过耳延展，\n与后腿成一条斜线", "right_wrist", _UP),
+        Cue("下侧腰不塌，胸腔向上旋转", "spine_mid"),
+        Cue("下手轻落地，不撑住体重", "left_wrist", _DOWN),
+        Cue("前膝屈 90°，对准第二、三脚趾", "left_knee", _DOWN),
+        Cue("后脚外缘压实，后腿延展", "right_ankle", _DOWN),
+    ),
+    "tree": (
+        Cue("双臂上举，肩胛仍下沉", "left_wrist", _UP),
+        Cue("尾骨向下，肋骨不外翻", "hip_mid", _DOWN),
+        Cue("抬起腿的膝向侧后方打开", "right_knee", (1.0, 0.2)),
+        Cue("抬起脚放大腿内侧或小腿，\n不压在膝关节上", "right_ankle"),
+        Cue("支撑脚均匀压地，脚趾放松", "left_foot_index", _DOWN),
+    ),
+    "anjaneyasana": (
+        Cue("从腋窝向上延展，肩胛下沉", "left_wrist", _UP),
+        Cue("尾骨向下卷，\n避免腰部塌陷代偿", "hip_mid", _DOWN),
+        Cue("前膝在踝正上方，不超过脚尖", "left_knee", _DOWN),
+        Cue("后侧髋前方向下延展", "right_knee", _DOWN),
+        Cue("后脚背贴地", "right_foot_index", _DOWN),
+    ),
+    "ardha_hanumanasana": (
+        Cue("从髋折叠，脊柱延展不蜷曲", "spine_mid"),
+        Cue("骨盆保持水平，不向一侧歪", "hip_mid"),
+        Cue("髋部落在后膝正上方", "right_knee", _UP),
+        Cue("前腿膝可微屈，避免超伸", "left_knee"),
+        Cue("前腿脚趾回勾", "left_foot_index", (-0.3, -0.95)),
+    ),
+    "pigeon": (
+        Cue("骨盆保持中正，两侧坐骨等高", "hip_mid"),
+        Cue("躯干直立，不向前塌", "spine_mid", _UP),
+        Cue("前腿小腿角度按髋部开度调整，\n不强求横平", "left_knee"),
+        Cue("后侧髋前方向下沉", "right_knee", _DOWN),
+        Cue("后腿脚背贴地", "right_foot_index", _DOWN),
+    ),
+    "child": (
+        Cue("额头落地或垫支撑，颈部放松", "nose", _DOWN),
+        Cue("呼吸送到后背肋骨", "spine_mid"),
+        Cue("坐骨向脚跟方向沉", "hip_mid", (1.0, 0.3)),
+        Cue("双臂向前延展", "left_wrist", (-1.0, 0.0)),
+        Cue("大脚趾相触，膝盖可分开", "left_foot_index"),
+    ),
+    "bridge": (
+        Cue("肩胛内收压地，\n为胸腔打开腾空间", "left_shoulder", _DOWN),
+        Cue("先卷尾骨再抬髋，\n脊柱逐节离地", "hip_mid", _UP),
+        Cue("大腿内侧内旋，膝不外翻", "left_knee", _UP),
+        Cue("脚跟在膝正下方，双脚与髋同宽", "left_ankle", _DOWN),
+    ),
+    "downdog": (
+        Cue("双手压实，食指根部不抬起", "left_wrist", _DOWN),
+        Cue("坐骨向上向后推，与手对抗", "hip_mid", _UP),
+        Cue("膝可微屈，换取脊柱延展", "left_knee"),
+        Cue("大腿内旋", "spine_mid"),
+        Cue("脚跟朝地面下沉", "left_heel", _DOWN),
+    ),
     "updog": (
         Cue("双手压实地面，十指张开", "left_wrist", _DOWN),
         Cue("肩胛下沉，远离耳朵", "left_shoulder", _DOWN),
@@ -702,6 +800,34 @@ ANNOTATED: dict[str, tuple[Cue, ...]] = {
         Cue("后弯分布在整段胸椎，\n不集中在下背", "spine_mid"),
         Cue("大腿主动离地", "left_knee", _UP),
         Cue("脚背压实地面", "left_foot_index", _DOWN),
+    ),
+    "plank": (
+        Cue("后颈延展，\n视线落在双手前方地面", "nose", (-0.5, 0.85)),
+        Cue("肩在腕正上方，手掌压实", "left_wrist", _DOWN),
+        Cue("腹部收紧，髋不塌不翘", "hip_mid", _UP),
+        Cue("大腿收紧", "left_knee", _UP),
+        Cue("脚跟向后推", "left_heel", (1.0, 0.0)),
+    ),
+    "chaturanga": (
+        Cue("肩不低于肘 —— \n宁可停高一点也不塌肩", "left_shoulder"),
+        Cue("肘贴肋，前臂垂直地面", "left_elbow", _DOWN),
+        Cue("全身成一条直线，髋不上翘", "hip_mid"),
+        Cue("核心与大腿持续收紧", "left_knee", _UP),
+        Cue("脚跟向后推", "left_heel", (1.0, 0.0)),
+    ),
+    "side_plank": (
+        Cue("上侧肩向后打开，\n头颈保持中立", "right_wrist", _UP),
+        Cue("支撑手在肩正下方，整掌压实", "left_wrist", _DOWN),
+        Cue("髋部主动上提，不下坠", "hip_mid", _UP),
+        Cue("双腿收紧叠放", "left_knee"),
+        Cue("脚外缘或前脚掌压地", "left_ankle", _DOWN),
+    ),
+    "reverse_plank": (
+        Cue("颈部后仰保持舒适范围，不硬压", "nose", (-0.5, -0.85)),
+        Cue("双手在肩后下方，\n指尖朝脚的方向", "left_wrist", _DOWN),
+        Cue("髋部主动上推，胸腔向上打开", "hip_mid", _UP),
+        Cue("双腿收紧", "left_knee", _UP),
+        Cue("脚背向下延展", "left_foot_index", _DOWN),
     ),
 }
 
@@ -773,6 +899,15 @@ def _layout_labels(
     return placed
 
 
+def _column_ratio(span_x: float, span_y: float) -> float:
+    """文字栏占卡片宽度的比例。
+
+    横向体式（四柱、平板、上犬）的人像受中间栏宽度限制，固定栏宽会把它挤得
+    很小；这类体式的要点也更容易竖着排开，文字栏可以窄一些。
+    """
+    return 0.205 if span_x / max(span_y, 1e-6) > 1.8 else 0.255
+
+
 def card_height_for(key: str, width: int) -> int:
     """按体式的长宽比推荐卡片高度。
 
@@ -783,7 +918,8 @@ def card_height_for(key: str, width: int) -> int:
     min_x, min_y, max_x, max_y, _ = _figure_extent(CANONICAL[key]())
     span_x = max(max_x - min_x, 1e-6)
     span_y = max(max_y - min_y, 1e-6)
-    figure_w = width * (1.0 - 2 * 0.255 - 2 * 0.035)
+    ratio = _column_ratio(span_x, span_y)
+    figure_w = width * (1.0 - 2 * ratio - 2 * 0.035)
     needed = figure_w * span_y / span_x + width * 0.22
     return int(min(max(needed, width * 0.50), width * 1.20))
 
@@ -846,8 +982,9 @@ def render_reference_card(
         [(margin, header_h), (width - margin, header_h)], fill=(224, 220, 212), width=2
     )
 
-    # 人像占中间一栏，两侧留给要点。
-    column_w = round(width * 0.255)
+    # 人像占中间一栏，两侧留给要点。栏宽随体式长宽比调整，见 _column_ratio。
+    _ex = _figure_extent(build())
+    column_w = round(width * _column_ratio(_ex[2] - _ex[0], _ex[3] - _ex[1]))
     figure_box = (
         margin + column_w,
         header_h + round(height * 0.015),
