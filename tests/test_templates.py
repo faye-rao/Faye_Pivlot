@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tests.skeletons import CANONICAL  # noqa: E402
+from yoga_grid.reference import CANONICAL  # noqa: E402
 from yoga_grid import landmarks as L  # noqa: E402
 from yoga_grid.poses import TEMPLATES, TEMPLATES_BY_KEY, match_pose, score_by_key  # noqa: E402
 
@@ -33,7 +33,7 @@ from yoga_grid.poses import TEMPLATES, TEMPLATES_BY_KEY, match_pose, score_by_ke
 def test_every_template_has_a_canonical_skeleton():
     """新加模板必须同时提供标准骨架，否则它的区分度无人把关。"""
     missing = sorted({t.key for t in TEMPLATES} - set(CANONICAL))
-    assert not missing, f"以下模板缺标准骨架：{missing}（请在 tests/skeletons.py 里补上）"
+    assert not missing, f"以下模板缺标准骨架：{missing}（请在 yoga_grid/reference.py 里补上）"
 
     unknown = sorted(set(CANONICAL) - {t.key for t in TEMPLATES})
     assert not unknown, f"以下骨架没有对应模板：{unknown}"

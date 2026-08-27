@@ -219,6 +219,11 @@ _VIRTUAL = {
     "wrist_mid": lambda p: midpoint(p, "left_wrist", "right_wrist"),
     "elbow_mid": lambda p: midpoint(p, "left_elbow", "right_elbow"),
     "foot_mid": lambda p: midpoint(p, "left_foot_index", "right_foot_index"),
+    # 胸腰交界附近，用于把「后弯分布在整段胸椎」这类要点锚定到脊柱中段。
+    "spine_mid": lambda p: (
+        midpoint(p, "left_shoulder", "right_shoulder") * 0.5
+        + midpoint(p, "left_hip", "right_hip") * 0.5
+    ),
 }
 
 
