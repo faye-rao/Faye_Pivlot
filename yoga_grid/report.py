@@ -114,6 +114,35 @@ def dump_json(
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _restore_landmarks(
+    landmarks: Any, frame_w: int, frame_h: int
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """把 scores.json 里的 landmarks 还原成 (原始关键点, 归一化骨架)。
+
+    支持两种历史格式，靠列数区分：
+
+    * **33×3**（当前）—— 原始关键点：归一化 x、y 加置信度。归一化骨架由它算出，
+      算之前要先乘回画面宽高，否则画面长宽比会把角度拉歪。
+    * **33×2**（早期）—— 已经归一化过的骨架。它直接就是 ``norm``，不能再乘一次
+      宽高（那会把本已消掉平移和尺度的坐标彻底算错，而且是静默的）。这种文件
+      没有置信度，所以拿不到人脸位置，遮脸只能跳过。
+    """
+    if not landmarks:
+        return None, None
+
+    array = np.asarray(landmarks, dtype=np.float64)
+    if array.ndim != 2 or array.shape[0] != L.N_LANDMARKS:
+        return None, None
+
+    if array.shape[1] >= 3:
+        lm = array
+        norm = L.normalize(L.to_pixels(lm, frame_w or 1000, frame_h or 1000))
+        return lm, norm
+
+    # 早期格式：已是归一化骨架，直接用；没有置信度，lm 留空。
+    return None, array
+
+
 def load_candidates(
     path: Path, selected_only: bool = False
 ) -> tuple[Path, list[Candidate], dict[str, Any]]:
@@ -145,15 +174,7 @@ def load_candidates(
             if pose_data
             else None
         )
-        landmarks = entry.get("landmarks")
-        lm = np.asarray(landmarks, dtype=np.float64) if landmarks else None
-        # 归一化骨架由原始点重算 —— 用视频尺寸把 x/y 还原成同尺度的像素坐标，
-        # 否则画面长宽比会把角度拉歪。
-        norm = (
-            L.normalize(L.to_pixels(lm, frame_w or 1000, frame_h or 1000))
-            if lm is not None
-            else None
-        )
+        lm, norm = _restore_landmarks(entry.get("landmarks"), frame_w, frame_h)
         frame = FramePose(
             idx=-1,
             frame_no=entry["frame_no"],

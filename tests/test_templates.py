@@ -134,6 +134,36 @@ def test_every_pose_has_cues_and_annotations():
             assert cue.text.strip(), f"{key}：要点文字为空"
 
 
+def test_restore_landmarks_handles_both_formats():
+    """scores.json 的两种 landmarks 格式都要正确还原。
+
+    回归测试：存储格式从「33×2 归一化骨架」换成「33×3 原始关键点」后，旧文件
+    被当成新格式读，会把已归一化的坐标再乘一次画面宽高 —— 几何全错而且不报错。
+    """
+    from yoga_grid.report import _restore_landmarks
+
+    pts = CANONICAL["warrior2"]()
+    expected = L.normalize(pts)
+
+    # 当前格式：归一化 x/y + 置信度，还原后的骨架应与直接归一化一致
+    raw = [[float(x) / 1000.0, float(y) / 1000.0, 1.0] for x, y in pts]
+    lm, norm = _restore_landmarks(raw, 1000, 1000)
+    assert lm is not None and lm.shape == (L.N_LANDMARKS, 3)
+    assert norm is not None
+    import numpy as np
+
+    assert np.allclose(norm, expected, atol=1e-6)
+
+    # 早期格式：本身就是归一化骨架，必须原样采用，不能再缩放一次
+    legacy = [[float(x), float(y)] for x, y in expected]
+    lm2, norm2 = _restore_landmarks(legacy, 1920, 1080)
+    assert lm2 is None, "早期格式没有置信度，lm 应留空以跳过遮脸"
+    assert np.allclose(norm2, expected, atol=1e-6)
+
+    assert _restore_landmarks(None, 100, 100) == (None, None)
+    assert _restore_landmarks([], 100, 100) == (None, None)
+
+
 def test_every_pose_renders():
     """19 个体式的线稿和对照卡都要能渲染出来，不抛异常。"""
     from yoga_grid.reference import render_pose, render_reference_card
