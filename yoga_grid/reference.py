@@ -144,6 +144,23 @@ def parsvakonasana() -> np.ndarray:
     )
 
 
+def parsvottanasana() -> np.ndarray:
+    """金字塔式：双脚前后错开、双腿伸直，躯干折叠于前腿之上，双手落地。"""
+    return skeleton(
+        nose=(-95, 120),
+        left_ear=(-88, 112), right_ear=(-84, 116),
+        left_shoulder=(-81, 62), right_shoulder=(-51, 88),
+        left_elbow=(-92, 126), right_elbow=(-66, 142),
+        left_wrist=(-100, 190), right_wrist=(-78, 196),
+        left_hip=(-8, 0), right_hip=(8, 0),
+        # 前腿（左）与后腿（右）都伸直，落点前后错开
+        left_knee=(-38, 95), left_ankle=(-68, 190),
+        right_knee=(38, 95), right_ankle=(68, 190),
+        left_heel=(-74, 196), right_heel=(76, 196),
+        left_foot_index=(-88, 192), right_foot_index=(84, 190),
+    )
+
+
 def tree() -> np.ndarray:
     """树式：站左腿竖直，右膝外开、右脚贴左腿，双臂上举。"""
     return skeleton(
@@ -364,6 +381,7 @@ CANONICAL: dict[str, callable] = {
     "warrior3": warrior3,
     "triangle": triangle,
     "parsvakonasana": parsvakonasana,
+    "parsvottanasana": parsvottanasana,
     "tree": tree,
     "anjaneyasana": anjaneyasana,
     "ardha_hanumanasana": ardha_hanumanasana,
@@ -448,6 +466,13 @@ CUES: dict[str, tuple[str, ...]] = {
         "后脚外缘压实，后腿从髋到脚跟延展",
         "下侧腰不塌，胸腔向上旋转打开",
         "上臂过耳延展，与后腿连成一条斜线",
+    ),
+    "parsvottanasana": (
+        "从髋部折叠，背部保持延展而不是拱起",
+        "骨盆两侧保持等高，不向后腿那侧歪",
+        "前腿膝盖可微屈，避免超伸",
+        "后脚外缘压实，后腿从髋到脚跟主动伸直",
+        "颈部放松，不主动伸头去找腿",
     ),
     "tree": (
         "支撑脚均匀压地，脚趾放松不抓地",
@@ -744,6 +769,13 @@ ANNOTATED: dict[str, tuple[Cue, ...]] = {
         Cue("下手轻落地，不撑住体重", "left_wrist", _DOWN),
         Cue("前膝屈 90°，对准第二、三脚趾", "left_knee", _DOWN),
         Cue("后脚外缘压实，后腿延展", "right_ankle", _DOWN),
+    ),
+    "parsvottanasana": (
+        Cue("从髋部折叠，背部保持延展", "hip_mid"),
+        Cue("骨盆两侧保持等高，不向后腿侧歪", "hip_mid"),
+        Cue("前腿膝盖可微屈，避免超伸", "left_knee"),
+        Cue("后脚外缘压实，后腿主动伸直", "right_ankle", _DOWN),
+        Cue("颈部放松，不主动去找腿", "nose", _DOWN),
     ),
     "tree": (
         Cue("双臂上举，肩胛仍下沉", "left_wrist", _UP),

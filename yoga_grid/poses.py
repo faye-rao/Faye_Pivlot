@@ -177,6 +177,19 @@ def _lowest_wrist_drop(view: PoseView) -> float:
     return min(view.dy("shoulder_mid", "s_wrist"), view.dy("shoulder_mid", "o_wrist"))
 
 
+def _ankle_spread(view: PoseView) -> float:
+    """两踝的水平间距，躯干长度为单位。
+
+    区分「双脚并拢的前屈」和「双脚前后错开的前屈」用的就是这一个量：
+    站立前屈式实测 0.02~0.35，金字塔式（双脚前后分开）实测 0.58~1.53。
+    少了它，站立前屈式的模板对两者都给满分 —— 真实视频里那一簇 22 帧就混了
+    两个体式，其中 20 帧其实是金字塔式。
+
+    取水平分量而不是欧氏距离：两脚是前后错开，竖直方向本来就该几乎等高。
+    """
+    return abs(float(view.pt("s_ankle")[0] - view.pt("o_ankle")[0]))
+
+
 def _feet_below_hips(view: PoseView) -> float:
     """踝中点低于髋中点的距离，躯干长度为单位。
 
@@ -473,7 +486,27 @@ TEMPLATES: tuple[Template, ...] = (
             # 双腿竖直是与下犬式的分水岭：下犬式手脚分开，腿与铅垂线约 45°。
             Check("双腿竖直", lambda v: v.vert("hip_mid", "ankle_mid"), 0, 12, 26, 2.0),
             Check("双脚在髋下方（站姿）", _feet_below_hips, 1.90, 0.70, 0.90, 2.0, ""),
+            # 双脚并拢是与金字塔式的分水岭 —— 后者双脚前后错开。缺这一条时，
+            # 真实视频里 20 帧金字塔式全被判成了站立前屈式。
+            Check("双脚并拢", _ankle_spread, 0.15, 0.40, 0.45, 2.5, ""),
             Check("头部低于髋部", lambda v: v.dy("hip_mid", "nose"), 1.10, 0.60, 0.80, 1.5, ""),
+        ),
+        min_score=0.64,
+    ),
+    Template(
+        key="parsvottanasana",
+        zh="金字塔式",
+        en="Intense Side Stretch",
+        symmetric=False,
+        spine_up=(-1.06, -0.15),  # 躯干自髋向下折叠
+        checks=(
+            Check("躯干向下折叠", _spine_up, -0.65, 0.35, 0.40, 2.0, ""),
+            Check("双腿伸直", _legs_extended, 175, 15, 33, 2.0),
+            # 与站立前屈式的分水岭。容差取得宽：错开量在画面上的投影随机位变化
+            # 很大，实测同一支视频里 0.58~1.53 都是这个体式。
+            Check("双脚前后错开", _ankle_spread, 1.10, 0.50, 0.35, 2.5, ""),
+            Check("双脚在髋下方（站姿）", _feet_below_hips, 1.50, 0.55, 0.55, 2.0, ""),
+            Check("头部低于髋部", lambda v: v.dy("hip_mid", "nose"), 1.00, 0.60, 0.70, 1.5, ""),
         ),
         min_score=0.64,
     ),
