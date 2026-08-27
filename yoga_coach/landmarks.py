@@ -77,6 +77,32 @@ SKELETON_EDGES: tuple[tuple[str, str], ...] = (
 #: that need them report ``None`` instead of a bogus angle.
 DEFAULT_MIN_VISIBILITY = 0.5
 
+#: The body parts framing is judged on, each existing as a left/right pair.
+#: Face landmarks are excluded -- they stay visible even when the legs are out
+#: of shot, which is exactly the case worth catching.
+BODY_PARTS: tuple[str, ...] = (
+    "shoulder",
+    "elbow",
+    "wrist",
+    "hip",
+    "knee",
+    "ankle",
+    "heel",
+    "foot_index",
+)
+
+#: Chinese names for the parts, for telling someone what is out of frame.
+PART_NAMES_ZH: dict[str, str] = {
+    "shoulder": "肩膀",
+    "elbow": "手肘",
+    "wrist": "手腕",
+    "hip": "髋部",
+    "knee": "膝盖",
+    "ankle": "脚踝",
+    "heel": "脚跟",
+    "foot_index": "脚尖",
+}
+
 
 def mirror_name(name: str) -> str:
     """``left_knee`` -> ``right_knee`` and vice versa."""
@@ -155,10 +181,25 @@ class Skeleton:
         return out
 
     def mid(self, left: str, right: str) -> Point | None:
-        pair = self.require(left, right)
-        if pair is None:
-            return None
-        return midpoint(pair[0], pair[1])
+        """Midpoint of a left/right pair, falling back to whichever is visible.
+
+        Requiring both would make every mid-body point unavailable in a
+        side-on pose, where the far side is occluded by the near one.  That
+        takes the torso length with it -- and with it every distance measured
+        in torso lengths -- so Downward Dog and Plank could not be scored at
+        all from their own recommended camera angle.
+
+        Using the one visible side is a good approximation there: seen from
+        the side, the near shoulder and the body's midline project to nearly
+        the same place.  Checks that genuinely need both sides (levelling the
+        shoulders, levelling the hips) ask for the landmarks directly and
+        still correctly report "not measurable".
+        """
+        a = self.get(left)
+        b = self.get(right)
+        if a is not None and b is not None:
+            return midpoint(a, b)
+        return a if a is not None else b
 
     def torso_length(self) -> float | None:
         """Shoulder-centre to hip-centre distance, the unit of scale.
@@ -173,12 +214,29 @@ class Skeleton:
         length = distance(shoulders, hips)
         return length if length > 1e-6 else None
 
-    def coverage(self) -> float:
-        """Fraction of the body landmarks (shoulders down) that are visible.
+    def missing_parts(self) -> list[str]:
+        """Body parts where *neither* side can be seen.
 
-        The face points are excluded: they are almost always visible and would
-        mask a body that is half out of frame.
+        Counting parts rather than landmarks is the whole point.  MediaPipe's
+        visibility score answers "is this landmark unoccluded", not "is it in
+        frame", and in any side-on pose -- Downward Dog, Plank, Chair -- the
+        entire far side of the body is hidden behind the near side.  Scoring
+        each landmark separately therefore reports a perfectly framed Downward
+        Dog as half out of shot.  A knee is in frame if *either* knee is
+        visible; a body that is genuinely cropped loses both.
+
+        Face landmarks are excluded: they are almost always visible and would
+        mask a body whose legs are out of shot.
         """
-        body = [n for n in LANDMARK_NAMES[11:]]
-        seen = sum(1 for n in body if self.get(n) is not None)
-        return seen / len(body)
+        missing = []
+        for part in BODY_PARTS:
+            if self.get(f"left_{part}") is None and self.get(f"right_{part}") is None:
+                missing.append(part)
+        return missing
+
+    def coverage(self) -> float:
+        """Fraction of the body parts (shoulders down) that are in frame.
+
+        See :meth:`missing_parts` for why this counts parts, not landmarks.
+        """
+        return 1.0 - len(self.missing_parts()) / len(BODY_PARTS)

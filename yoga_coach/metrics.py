@@ -166,11 +166,19 @@ def line_offset(a: str, b: str, c: str) -> Metric:
         length = (dx * dx + dy * dy) ** 0.5
         if length < 1e-9:
             return None
-        # Cross product of (start->end) with (start->point), normalised by the
-        # segment length, gives the signed perpendicular distance.  y points
-        # down, so flip the sign to make "up" positive.
-        cross = dx * (point.y - start.y) - dy * (point.x - start.x)
-        return _scaled(skeleton, -cross / length)
+
+        # Project onto whichever unit normal points *up the image*, rather
+        # than onto "left of the direction of travel".  Turning round in front
+        # of the camera reverses the segment, and a sign tied to its direction
+        # reverses with it -- which had Plank telling someone facing the other
+        # way to lift their hips when they needed to lower them.
+        nx, ny = -dy / length, dx / length
+        if ny > 0:  # y grows downwards, so flip to make the normal point up
+            nx, ny = -nx, -ny
+        if abs(ny) < 1e-9:
+            # A vertical reference line: "above" it is not a thing.
+            return None
+        return _scaled(skeleton, (point.x - start.x) * nx + (point.y - start.y) * ny)
 
     return metric
 

@@ -465,11 +465,15 @@ DOWN_DOG = PoseSpec(
             key="hip_angle",
             label=Text("髋部折叠角", "Hip angle"),
             metric=m.joint_angle("{s}_shoulder", "{s}_hip", "{s}_knee"),
-            low=55.0,
+            # No lower bound on purpose.  Pushing the hips higher and further
+            # back closes this angle, and that *is* the pose -- a practitioner
+            # folding to 45 degrees was being told to ease off while their
+            # spine measured longer than at 90.  Folding deep is only a
+            # problem when the back rounds, and `back_long` below is the check
+            # that actually watches for that.
             high=100.0,
             falloff=35.0,
             weight=1.4,
-            when_low=Text("不用折得这么深，脊柱保持延展", "Ease out of the fold, lengthen the spine"),
             when_high=Text("臀部向上向后推高，做出倒 V", "Push the hips up and back into an inverted V"),
             focus=("{s}_hip",),
         ),
@@ -482,6 +486,28 @@ DOWN_DOG = PoseSpec(
             weight=1.3,
             when_low=Text("耳朵回到两臂之间，从手到髋拉成一条线", "Ears between the arms, one line from hands to hips"),
             focus=("{s}_shoulder",),
+        ),
+        Check(
+            key="heel_down",
+            label=Text("脚跟下沉", "Heels down"),
+            # Measured against the toes rather than the floor: the ball of the
+            # foot is on the ground in this pose, so it *is* the floor, and no
+            # ground plane has to be guessed at.  About 0.15 torso lengths is
+            # 7cm of lift on an adult.
+            metric=m.vertical_gap("{s}_heel", "{s}_foot_index"),
+            high=0.15,
+            falloff=0.25,
+            # Deliberately light.  Heels touching down is not the standard in a
+            # general class -- most calves and hamstrings will not allow it, and
+            # forcing it rounds the back.  This should nudge towards reaching
+            # down, never dominate the score.
+            weight=0.6,
+            unit="×",
+            when_high=Text(
+                "脚跟向下踩向地面，踩不到地是正常的，别硬压",
+                "Reach the heels down -- not touching is normal, do not force it",
+            ),
+            focus=("{s}_heel",),
         ),
         *bilateral(
             key="leg_straight",
@@ -535,6 +561,27 @@ PLANK = PoseSpec(
             when_low=Text("髋部下沉了，收紧核心把臀部抬回一条线", "Hips are sagging -- engage the core and lift them"),
             when_high=Text("臀部翘太高了，放低到肩踝一条线", "Hips are too high -- lower them into line"),
             focus=("{s}_hip",),
+        ),
+        Check(
+            key="neck_neutral",
+            label=Text("颈部延续脊柱", "Neck follows the spine"),
+            # Offset of the ear from the hip-through-shoulder line: positive
+            # when the head lifts to look forward, negative when the chin
+            # drops towards the chest.  Two distinct faults, so two cues.
+            metric=m.line_offset("{s}_hip", "{s}_ear", "{s}_shoulder"),
+            low=-0.20,
+            high=0.20,
+            falloff=0.30,
+            weight=0.8,
+            when_low=Text(
+                "下巴别压向胸口，后颈保持长",
+                "Stop tucking the chin -- keep the back of the neck long",
+            ),
+            when_high=Text(
+                "别抬头看前方，目光落在双手之间的地面",
+                "Stop lifting the head -- gaze down between your hands",
+            ),
+            focus=("{s}_ear",),
         ),
         Check(
             key="shoulder_over_wrist",

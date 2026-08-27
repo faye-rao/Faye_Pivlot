@@ -58,12 +58,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="语音播报：报体式名、到位提示、纠正建议、完成一组（需要 pyttsx3）",
     )
     parser.add_argument(
+        "--speak-test",
+        action="store_true",
+        help="不开摄像头，单独测试语音：列出系统音色并试播几句后退出",
+    )
+    parser.add_argument(
+        "--speak-engine",
+        default="auto",
+        choices=("auto", "fresh", "persistent"),
+        help="语音引擎策略：fresh 每句新建引擎（Windows 默认，绕开只响一句的问题），"
+        "persistent 复用引擎（其他系统默认）",
+    )
+    parser.add_argument(
         "--speak-rate",
         type=int,
         default=165,
         help="语音语速，词/分钟（默认 165，越小越慢）",
     )
     parser.add_argument("--record", metavar="PATH", help="把带标注的画面保存到视频/图片文件")
+    parser.add_argument(
+        "--log",
+        metavar="PATH.csv",
+        help="把每项检查的实测值逐条记到 CSV（练完不用手记，直接看文件）",
+    )
     parser.add_argument("--width", type=int, default=1280, help="摄像头采集宽度")
     parser.add_argument("--height", type=int, default=720, help="摄像头采集高度")
     parser.add_argument(
@@ -102,6 +119,9 @@ def main(argv: list[str] | None = None) -> int:
         list_poses(args.lang)
         return 0
 
+    if args.speak_test:
+        return speak_test(args)
+
     pose = None if args.pose == "auto" else _lookup_pose(args.pose)
     if pose is False:  # unknown key; _lookup_pose already reported it
         return 2
@@ -110,6 +130,76 @@ def main(argv: list[str] | None = None) -> int:
     if isinstance(source, str) and Path(source).suffix.lower() in IMAGE_SUFFIXES:
         return run_image(args, pose)
     return run_stream(args, pose, source)
+
+
+def speak_test(args) -> int:
+    """Exercise speech on its own, so it can be diagnosed off the mat.
+
+    Plays several cues under both engine strategies, because the failure this
+    exists to catch produces no error at all: the first utterance is audible,
+    the rest are not, and every call still returns cleanly.  The program
+    cannot hear, so it never claims speech works -- it reports what it did and
+    asks what you heard.
+    """
+    import time as _time
+
+    from .checks import Text
+    from .voice import ENGINE_MODES, Speaker, default_engine_mode, describe_voices
+
+    voices = describe_voices()
+    if voices:
+        print("系统音色：")
+        print("\n".join(voices))
+    else:
+        print("没有列出任何音色（pyttsx3 未安装，或驱动不可用）。")
+    print()
+
+    lines = [
+        Text("第一句，测试语音", "Line one, testing"),
+        Text("第二句，前膝移回脚踝正上方", "Line two, knee over ankle"),
+        Text("第三句，到位了保持住", "Line three, hold there"),
+    ]
+
+    modes = [m for m in ENGINE_MODES if m != "auto"]
+    if args.speak_engine != "auto":
+        modes = [args.speak_engine]
+
+    worked = False
+    for mode in modes:
+        label = "引擎复用" if mode == "persistent" else "每句新建引擎"
+        print(f"—— 模式 {mode}（{label}）——")
+        speaker = Speaker(lang=args.lang, rate=args.speak_rate, engine_mode=mode)
+        if not speaker.enabled:
+            print("  引擎起不来，跳过。\n", file=sys.stderr)
+            continue
+        worked = True
+        print(f"  播报语言：{speaker.lang}")
+        for index, line in enumerate(lines, start=1):
+            print(f"  {index}. {line.get(speaker.lang)}", flush=True)
+            speaker.say(line, index * 100.0, force=True)
+            for _ in range(150):
+                if speaker._queue.empty():
+                    break
+                _time.sleep(0.1)
+            if not speaker.enabled:
+                print(f"  第 {index} 句之后引擎就报错停了。", file=sys.stderr)
+                break
+        _time.sleep(1.5)
+        speaker.close()
+        print()
+
+    if not worked:
+        print("语音完全不可用，上面的报错说明了原因。", file=sys.stderr)
+        return 1
+
+    print("=" * 56)
+    print("以上每组三句都**调用**完成了。程序听不见，所以到此为止它")
+    print("只能确认没有报错——真正的结果只有你知道：每组你听到了几句？")
+    print()
+    print(f"本机默认模式：{default_engine_mode()}")
+    print("  · 某一组三句都听到 → 用那个模式：--speak-engine <模式名>")
+    print("  · 两组都只听到第一句 → 告诉我，这条路走不通，我换方案")
+    return 0
 
 
 def _lookup_pose(key: str):
@@ -179,6 +269,7 @@ def run_stream(args, pose, source) -> int:
 
     from .console import ConsoleReporter
     from .detector import PoseDetector
+    from .logbook import Logbook
     from .session import CoachSession
 
     capture = cv2.VideoCapture(source)
@@ -198,6 +289,7 @@ def run_stream(args, pose, source) -> int:
 
     session = CoachSession(pose=pose, hold_target=args.hold_target)
     reporter = ConsoleReporter(lang=args.lang)
+    logbook = Logbook()
     overlay = None
     # Needed for the window, and also when recording headlessly: a saved clip
     # without the annotations would be no more use than the original footage.
@@ -213,7 +305,9 @@ def run_stream(args, pose, source) -> int:
         from .checks import Text
         from .voice import Speaker
 
-        speaker = Speaker(lang=args.lang, rate=args.speak_rate)
+        speaker = Speaker(
+            lang=args.lang, rate=args.speak_rate, engine_mode=args.speak_engine
+        )
         announcer = Announcer()
         if speaker.enabled:
             # Say something before the practice starts, so you find out the
@@ -256,6 +350,8 @@ def run_stream(args, pose, source) -> int:
 
                 skeleton = detector.detect(frame, int(now * 1000))
                 state = session.update(skeleton, now)
+
+                logbook.record(state, now, collect_rows=bool(args.log))
 
                 if announcer is not None and speaker is not None:
                     cue = announcer.update(state, now)
@@ -303,6 +399,11 @@ def run_stream(args, pose, source) -> int:
         f"\n本次练习：最长保持 {session.best_hold:.0f} 秒，"
         f"完成 {session.holds_completed} 组。"
     )
+    for line in logbook.summary_lines():
+        print(line)
+    if args.log:
+        logbook.write_csv(args.log)
+        print(f"\n逐帧记录已保存到 {args.log}")
     if args.record:
         print(f"录像已保存到 {args.record}")
     return 0
