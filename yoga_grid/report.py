@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from .extract import FramePose, VideoInfo
 from .poses import PoseMatch
 from .score import Candidate
@@ -49,7 +51,14 @@ def dump_json(
     params: dict[str, Any],
     n_detected: int,
     n_segments: int,
+    include_landmarks: bool = True,
 ) -> None:
+    """落盘 scores.json。
+
+    ``include_landmarks`` 会额外存下每个候选帧的归一化骨架（33x2，约 0.5 KB/帧）。
+    这是离线复算体式模板的唯一依据 —— 没有它，想调一项容差就得重跑整支视频，
+    而调容差恰恰需要反复试。
+    """
     payload = {
         "video": {
             "path": str(info.path),
@@ -86,6 +95,11 @@ def dump_json(
                 "selected": c.selected,
                 "grid_slot": c.grid_slot,
                 "note": c.note,
+                **(
+                    {"landmarks": [[round(float(v), 4) for v in pt] for pt in c.frame.norm]}
+                    if include_landmarks and c.frame.norm is not None
+                    else {}
+                ),
             }
             for c in candidates
         ],
@@ -98,8 +112,9 @@ def load_candidates(
 ) -> tuple[Path, list[Candidate], dict[str, Any]]:
     """从 scores.json 读回候选帧。
 
-    只重建下游真正要用的字段（帧号、外框、时间、体式名、各项分数）。关键点
-    不重建 —— 裁图、标签和选帧解释都不需要它。
+    重建下游要用的字段（帧号、外框、时间、体式名、各项分数），以及归一化骨架
+    （若当初存了）—— 有骨架才能离线复算体式模板，这是调容差的前提。
+    原始像素级 landmark 不重建，没有任何下游需要它。
     """
     payload = json.loads(path.read_text(encoding="utf-8"))
     video_path = Path(payload["video"]["path"])
@@ -121,12 +136,13 @@ def load_candidates(
             if pose_data
             else None
         )
+        landmarks = entry.get("landmarks")
         frame = FramePose(
             idx=-1,
             frame_no=entry["frame_no"],
             t=entry["t"],
             lm=None,
-            norm=None,
+            norm=np.asarray(landmarks, dtype=np.float64) if landmarks else None,
             bbox=tuple(entry["bbox"]),
             visibility=entry["components"].get("visibility", 0.0),
             sharpness=0.0,

@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+from .poses import TEMPLATES, score_by_key
 from .report import load_candidates
 from .score import Candidate
 from .select import cluster_rank_score, total_hold
@@ -125,6 +126,47 @@ def explain(
                     f"{cand.rank_score():>7.2f}  {mark}{here}"
                 )
             add("")
+
+    if focus_cand is not None and focus_cand.frame.norm is not None:
+        add("── 这一帧在每个体式模板下的得分 ──")
+        add("")
+        add("按分数排序。`朝向` 是躯干朝向门槛的系数，为 0 说明这一帧的体位方向")
+        add("根本不符合该体式（比如倒过来了），此时模板分直接归零。")
+        add("")
+        scored = []
+        for template in TEMPLATES:
+            match = score_by_key(focus_cand.frame.norm, template.key)
+            if match is not None:
+                scored.append((template, match))
+        scored.sort(key=lambda pair: pair[1].score, reverse=True)
+
+        add(f"    {'体式':<12} {'得分':>6} {'门槛':>6} {'朝向':>6}  判定")
+        for template, match in scored:
+            verdict = "✓ 过线" if match.score >= template.min_score else ""
+            add(
+                f"    {template.zh:<12} {match.score:>6.2f} {template.min_score:>6.2f} "
+                f"{match.orientation:>6.2f}  {verdict}"
+            )
+        add("")
+
+        # 展开前两名的检查明细 —— 误判的原因几乎总在这里。
+        for template, match in scored[:2]:
+            add(f"    「{template.zh}」逐项：")
+            for check in sorted(match.checks, key=lambda c: c.score):
+                if check.value != check.value:  # nan
+                    continue
+                digits = 0 if check.unit == "°" else 2
+                add(
+                    f"      {check.label:<16} 实测 {check.value:>8.{digits}f}{check.unit}"
+                    f"  目标 {check.target:.{digits}f}{check.unit}±{check.tol:.{digits}f}"
+                    f"  得分 {check.score:.2f}"
+                )
+            add("")
+
+    if focus_cand is not None and focus_cand.frame.norm is None:
+        add("（这份 scores.json 没有存骨架，无法复算各模板得分。"
+            "重跑一次即可 —— 新版默认会存。）")
+        add("")
 
     if focus_cand is not None:
         add("── 结论 ──")

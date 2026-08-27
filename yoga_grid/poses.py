@@ -267,6 +267,40 @@ TEMPLATES: tuple[Template, ...] = (
         min_score=0.64,
     ),
     Template(
+        key="parsvakonasana",
+        zh="侧角伸展式",
+        en="Extended Side Angle",
+        symmetric=False,
+        spine_up=(0.20, 0.88),  # 躯干朝前腿侧大幅倾斜，头仍高于髋
+        checks=(
+            # 与三角伸展式的分水岭就是这一项：侧角伸展屈前膝，三角伸展前腿伸直。
+            # 权重给足，两个体式才不会互相抢。
+            Check("前膝屈 90°", lambda v: v.ang("s_hip", "s_knee", "s_ankle"), 95, 18, 35, 2.5),
+            Check("后腿伸直", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 175, 14, 33, 2.0),
+            Check("躯干侧倾", _spine_up, 0.50, 0.22, 0.32, 2.0, ""),
+            Check("双臂成一线", lambda v: v.ang("s_wrist", "shoulder_mid", "o_wrist"), 166, 20, 38, 1.5),
+            Check("下手贴近前脚", lambda v: v.dist("s_wrist", "s_ankle"), 0.55, 0.50, 0.70, 1.5, ""),
+        ),
+        min_score=0.62,
+    ),
+    Template(
+        key="updog",
+        zh="上犬式",
+        en="Upward-Facing Dog",
+        symmetric=True,
+        spine_up=(0.22, 0.88),  # 肩高于髋 —— 与下犬式（髋最高）符号相反
+        checks=(
+            Check("双臂伸直", _arms_extended, 172, 15, 33, 2.0),
+            Check("胸腔上提、肩高于髋", _spine_up, 0.55, 0.25, 0.35, 2.0, ""),
+            Check("双腿伸直后展", _legs_extended, 172, 16, 35, 1.5),
+            Check("下肢接近水平", lambda v: v.horiz("hip_mid", "ankle_mid"), 12, 16, 30, 1.5),
+            Check("手撑在肩下方", lambda v: v.dy("s_shoulder", "s_wrist"), 0.80, 0.40, 0.55, 1.5, ""),
+            # 上犬是后弯，髋角明显小于平直；平板式这一项接近 178°，用来区分两者。
+            Check("躯干后弯", lambda v: v.ang("shoulder_mid", "hip_mid", "ankle_mid"), 150, 22, 38, 1.5),
+        ),
+        min_score=0.62,
+    ),
+    Template(
         key="tree",
         zh="树式",
         en="Tree",
