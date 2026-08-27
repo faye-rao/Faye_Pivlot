@@ -138,22 +138,29 @@ def select(
 
     # 体式种类不足时，用已入选体式的另一次保持来补位 —— 要求时间上离得够远，
     # 否则补进来的会是几乎相同的一张。
+    #
+    # 间隔要求逐级放宽：守死一个间隔会让九宫格空出格子，而 3×3 里空一格看起来
+    # 就是坏的。宁可补一张时间上近一些的，也比留洞好 —— 用了多大间隔会记在
+    # note 里，看图的人能判断这一格的成色。
     if len(picks) < count:
-        chosen = set(id(c) for c in picks)
-        spare = sorted(
-            (c for c in candidates if id(c) not in chosen),
-            key=lambda c: c.rank_score(),
-            reverse=True,
-        )
-        for cand in spare:
+        for gap in (fill_min_gap, fill_min_gap / 2.0, fill_min_gap / 4.0, 0.0):
             if len(picks) >= count:
                 break
-            same_pose = [p for p in picks if p.cluster == cand.cluster]
-            if any(abs(cand.t - p.t) < fill_min_gap for p in same_pose):
-                continue
-            cand.note = "同体式补位"
-            picks.append(cand)
-            n_filled += 1
+            chosen = {id(c) for c in picks}
+            spare = sorted(
+                (c for c in candidates if id(c) not in chosen),
+                key=lambda c: c.rank_score(),
+                reverse=True,
+            )
+            for cand in spare:
+                if len(picks) >= count:
+                    break
+                same_pose = [p for p in picks if p.cluster == cand.cluster]
+                if any(abs(cand.t - p.t) < gap for p in same_pose):
+                    continue
+                cand.note = f"同体式补位（间隔 {min(abs(cand.t - p.t) for p in same_pose):.0f}s）" if same_pose else "同体式补位"
+                picks.append(cand)
+                n_filled += 1
 
     if order == "score":
         picks.sort(key=lambda c: c.rank_score(), reverse=True)

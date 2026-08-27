@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 
+from . import landmarks as L
 from .extract import FramePose, VideoInfo
 from .poses import PoseMatch
 from .score import Candidate
@@ -55,9 +56,15 @@ def dump_json(
 ) -> None:
     """落盘 scores.json。
 
-    ``include_landmarks`` 会额外存下每个候选帧的归一化骨架（33x2，约 0.5 KB/帧）。
-    这是离线复算体式模板的唯一依据 —— 没有它，想调一项容差就得重跑整支视频，
-    而调容差恰恰需要反复试。
+    ``include_landmarks`` 会额外存下每个候选帧的原始关键点（33×3：归一化 x、y
+    和置信度，约 0.8 KB/帧），两个用途：
+
+    * 离线复算体式模板 —— 没有它，想调一项容差就得重跑整支视频，而调容差恰恰
+      需要反复试；
+    * 重拼时给人脸打面具 —— 面具要画在原始画面坐标里。
+
+    存原始关键点而不是归一化骨架：归一化骨架能从原始点算回来，反过来不行
+    （平移和尺度信息已经被消掉了）。存前者，一个字段就够。
     """
     payload = {
         "video": {
@@ -96,8 +103,8 @@ def dump_json(
                 "grid_slot": c.grid_slot,
                 "note": c.note,
                 **(
-                    {"landmarks": [[round(float(v), 4) for v in pt] for pt in c.frame.norm]}
-                    if include_landmarks and c.frame.norm is not None
+                    {"landmarks": [[round(float(v), 4) for v in pt] for pt in c.frame.lm]}
+                    if include_landmarks and c.frame.lm is not None
                     else {}
                 ),
             }
@@ -112,12 +119,14 @@ def load_candidates(
 ) -> tuple[Path, list[Candidate], dict[str, Any]]:
     """从 scores.json 读回候选帧。
 
-    重建下游要用的字段（帧号、外框、时间、体式名、各项分数），以及归一化骨架
-    （若当初存了）—— 有骨架才能离线复算体式模板，这是调容差的前提。
-    原始像素级 landmark 不重建，没有任何下游需要它。
+    重建下游要用的字段（帧号、外框、时间、体式名、各项分数），以及原始关键点
+    和由它算出的归一化骨架（若当初存了）—— 前者供人脸遮挡用，后者供离线复算
+    体式模板用。
     """
     payload = json.loads(path.read_text(encoding="utf-8"))
     video_path = Path(payload["video"]["path"])
+    frame_w = int(payload["video"].get("width") or 0)
+    frame_h = int(payload["video"].get("height") or 0)
 
     picks: list[Candidate] = []
     for entry in payload["candidates"]:
@@ -137,12 +146,20 @@ def load_candidates(
             else None
         )
         landmarks = entry.get("landmarks")
+        lm = np.asarray(landmarks, dtype=np.float64) if landmarks else None
+        # 归一化骨架由原始点重算 —— 用视频尺寸把 x/y 还原成同尺度的像素坐标，
+        # 否则画面长宽比会把角度拉歪。
+        norm = (
+            L.normalize(L.to_pixels(lm, frame_w or 1000, frame_h or 1000))
+            if lm is not None
+            else None
+        )
         frame = FramePose(
             idx=-1,
             frame_no=entry["frame_no"],
             t=entry["t"],
-            lm=None,
-            norm=np.asarray(landmarks, dtype=np.float64) if landmarks else None,
+            lm=lm,
+            norm=norm,
             bbox=tuple(entry["bbox"]),
             visibility=entry["components"].get("visibility", 0.0),
             sharpness=0.0,

@@ -13,8 +13,9 @@ from pathlib import Path
 
 import cv2
 
-from . import compat, report
+from . import compat, faces, reference, report
 from .cluster import cluster_candidates
+from .compare import build_comparison
 from .explain import explain
 from .extract import extract, iter_frames_at
 from .grid import GridStyle, build_grid, find_cjk_font
@@ -25,6 +26,7 @@ from .select import select
 from .stability import auto_threshold, find_holds, velocities
 
 DEFAULT_GRID_NAME = "九宫格.jpg"
+DEFAULT_COMPARE_NAME = "标准对照图.jpg"
 
 
 def _resize_long_side(frame, long_side: int):
@@ -109,8 +111,16 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--order", choices=("time", "score"), default="time", help="九宫格排列顺序")
     run.add_argument("--no-candidates", action="store_true", help="不导出候选帧缩略图")
     run.add_argument(
+        "--no-compare", action="store_true",
+        help="不生成标准体式对照图",
+    )
+    run.add_argument(
+        "--no-face-mask", action="store_true",
+        help="不给露出的人脸盖卡通面具（默认盖）",
+    )
+    run.add_argument(
         "--no-landmarks", action="store_true",
-        help="scores.json 里不存归一化骨架（省约 0.5 KB/帧，但之后无法离线复算体式模板）",
+        help="scores.json 里不存关键点（省约 0.8 KB/帧，但之后无法离线复算模板、重拼时也无法遮脸）",
     )
     run.add_argument("--list-poses", action="store_true", help="列出内置体式模板后退出")
     _add_grid_options(run)
@@ -118,7 +128,14 @@ def build_parser() -> argparse.ArgumentParser:
     grid = sub.add_parser("grid", help="按 scores.json 里的 selected 标记重新拼图")
     grid.add_argument("out", type=Path, help="上次运行的输出目录（含 scores.json）")
     grid.add_argument("--video", type=Path, default=None, help="视频路径（默认取 scores.json 里记录的）")
+    grid.add_argument("--no-face-mask", action="store_true", help="不给露出的人脸盖卡通面具")
+    grid.add_argument("--no-compare", action="store_true", help="不重新生成标准体式对照图")
     _add_grid_options(grid)
+
+    ref = sub.add_parser("reference", help="导出标准体式库（每个体式一张对照卡）")
+    ref.add_argument("-o", "--out", type=Path, default=Path("体式库"), help="输出目录")
+    ref.add_argument("--width", type=int, default=1180, help="卡片宽度，像素")
+    ref.add_argument("--font", default=None, help="中文字体文件路径")
 
     why = sub.add_parser("explain", help="解释某一帧为什么入选或落选")
     why.add_argument("out", type=Path, help="上次运行的输出目录（含 scores.json）")
@@ -228,6 +245,12 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
             f"      ⚠️ 体式种类不足 {args.count} 个，{selection.n_filled} 格用同体式的另一次保持补位",
             file=sys.stderr,
         )
+    if len(selection.picks) < args.count:
+        print(
+            f"      ⚠️ 候选帧只够 {len(selection.picks)} 张（要 {args.count} 张），"
+            f"格子会空出来。可以 --interval 0.3 抽密一点，或 --min-hold 0.5 放宽保持时长",
+            file=sys.stderr,
+        )
 
     print("[5/6] 回读原分辨率帧…", file=sys.stderr)
     pick_frame_nos = {c.frame.frame_no for c in selection.picks}
@@ -242,7 +265,12 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
         cand_dir.mkdir(parents=True, exist_ok=True)
 
     raw_picks = {}
+    n_masked = 0
     for frame_no, bgr in iter_frames_at(video, want):
+        # 先在整帧上遮脸，再派给缩略图和拼图 —— 裁剪会换坐标系，在整帧上做一次
+        # 就不会有哪条产出漏掉。
+        if not args.no_face_mask:
+            n_masked += faces.mask_face(bgr, cand_by_frame[frame_no].frame.lm)
         if frame_no in pick_frame_nos:
             raw_picks[frame_no] = bgr.copy()
         if not args.no_candidates:
@@ -258,6 +286,9 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
                 [cv2.IMWRITE_JPEG_QUALITY, 88],
             )
 
+    if not args.no_face_mask:
+        print(f"      {n_masked}/{len(want)} 帧检测到人脸并已遮挡", file=sys.stderr)
+
     print("[6/6] 合成九宫格…", file=sys.stderr)
     style = _grid_style(args)
     if style.labels and args.font is None and find_cjk_font() is None:
@@ -266,6 +297,13 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
     image = build_grid(raw_picks, selection.picks, style, frames_dir=out_dir / "frames")
     grid_path = out_dir / DEFAULT_GRID_NAME
     image.save(grid_path, quality=94, subsampling=1)
+
+    compare_path = None
+    if not args.no_compare:
+        compare_path = out_dir / DEFAULT_COMPARE_NAME
+        build_comparison(raw_picks, selection.picks, style, font_path=args.font).save(
+            compare_path, quality=92, subsampling=1
+        )
 
     params = {
         "interval": args.interval,
@@ -294,6 +332,8 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
     elapsed = time.monotonic() - started
     print(f"\n完成，用时 {elapsed:.0f}s", file=sys.stderr)
     print(f"  九宫格   {grid_path}", file=sys.stderr)
+    if compare_path is not None:
+        print(f"  对照图   {compare_path}", file=sys.stderr)
     print(f"  单张     {out_dir / 'frames'}", file=sys.stderr)
     if not args.no_candidates:
         print(f"  候选帧   {cand_dir}", file=sys.stderr)
@@ -319,14 +359,38 @@ def cmd_grid(args: argparse.Namespace) -> int:
 
     style = _grid_style(args)
     usable, cleanup_video = compat.prepare_video(video)
+    by_frame = {c.frame.frame_no: c for c in picks}
     try:
-        raw = dict(iter_frames_at(usable, [c.frame.frame_no for c in picks]))
+        raw = {}
+        for frame_no, bgr in iter_frames_at(usable, list(by_frame)):
+            if not args.no_face_mask:
+                faces.mask_face(bgr, by_frame[frame_no].frame.lm)
+            raw[frame_no] = bgr
     finally:
         cleanup_video()
     image = build_grid(raw, picks, style, frames_dir=args.out / "frames")
     grid_path = args.out / DEFAULT_GRID_NAME
     image.save(grid_path, quality=94, subsampling=1)
     print(f"已用 {len(picks)} 张重拼：{grid_path}", file=sys.stderr)
+    if not args.no_compare:
+        compare_path = args.out / DEFAULT_COMPARE_NAME
+        build_comparison(raw, picks, style, font_path=args.font).save(
+            compare_path, quality=92, subsampling=1
+        )
+        print(f"对照图：{compare_path}", file=sys.stderr)
+    return 0
+
+
+def cmd_reference(args: argparse.Namespace) -> int:
+    from .poses import TEMPLATES
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    for template in TEMPLATES:
+        card = reference.render_reference_card(
+            template.key, width=args.width, font_path=args.font
+        )
+        card.save(args.out / f"{template.key}_{template.zh}.png")
+    print(f"已导出 {len(TEMPLATES)} 张体式卡到 {args.out}", file=sys.stderr)
     return 0
 
 
@@ -343,11 +407,13 @@ def main(argv: list[str] | None = None) -> int:
     compat.configure_console()
     argv = list(sys.argv[1:] if argv is None else argv)
     # 让 `python -m yoga_grid 视频.mp4` 免写 run 子命令。
-    if argv and argv[0] not in {"run", "grid", "explain", "-h", "--help"}:
+    if argv and argv[0] not in {"run", "grid", "explain", "reference", "-h", "--help"}:
         argv.insert(0, "run")
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "reference":
+        return cmd_reference(args)
     if args.command == "explain":
         return cmd_explain(args)
     if args.command == "grid":
