@@ -166,6 +166,31 @@ def _knees_flexed(view: PoseView) -> float:
     )
 
 
+def _lowest_wrist_drop(view: PoseView) -> float:
+    """两腕相对肩中点向下位移中**较小**的那个，躯干长度为单位。
+
+    取 min 而不是均值，是因为均值会被一高一低抵消：侧板式一手撑地、一手朝天，
+    平均下来看起来「像双手撑地」。取 min 则只要有一只手不在身下就立刻失分。
+
+    平板式、四柱式必须双手撑地，这是它们区别于侧板式的硬特征。
+    """
+    return min(view.dy("shoulder_mid", "s_wrist"), view.dy("shoulder_mid", "o_wrist"))
+
+
+def _feet_below_hips(view: PoseView) -> float:
+    """踝中点低于髋中点的距离，躯干长度为单位。
+
+    「站着」和「趴着」之间最干净的一刀：站姿体式这个值有 1.2~2.4，俯卧/仰卧
+    体式（上犬、平板、四柱）接近 0。
+
+    少了它，**上犬式会被三角伸展式的模板认走** —— 两者的躯干倾角（竖直分量
+    都在 0.5 附近）和双腿伸直程度太接近，光靠朝向门槛分不开。同理，一个平板式
+    能在战士三式模板上拿到 0.8 以上。凡是躯干允许大幅前倾/侧倾的站姿体式，
+    都必须显式要求站姿，不能只靠朝向门槛。
+    """
+    return view.dy("hip_mid", "ankle_mid")
+
+
 # --------------------------------------------------------------------------
 # 体式模板
 # --------------------------------------------------------------------------
@@ -185,10 +210,13 @@ TEMPLATES: tuple[Template, ...] = (
             Check("髋部为最高点", lambda v: v.dy("hip_mid", "shoulder_mid"), 0.75, 0.35, 0.55, 2.0, ""),
             Check("躯干与手臂成一线", lambda v: v.ang("hip_mid", "shoulder_mid", "wrist_mid"), 172, 15, 35, 2.0),
             Check("髋部折角", lambda v: v.ang("shoulder_mid", "hip_mid", "ankle_mid"), 78, 22, 32, 1.5),
+            # 双腿向后斜展是与站立前屈式的区别：前屈时双腿竖直在髋正下方，
+            # 而下犬式手脚分开成 V 形，腿与铅垂线有明显夹角。
+            Check("双腿向后斜展", lambda v: v.vert("hip_mid", "ankle_mid"), 45, 20, 32, 2.0),
             Check("双腿伸直", _legs_extended, 176, 14, 35, 1.5),
             Check("双臂伸直", _arms_extended, 176, 12, 32, 1.0),
         ),
-        min_score=0.60,
+        min_score=0.62,
     ),
     Template(
         key="plank",
@@ -200,8 +228,11 @@ TEMPLATES: tuple[Template, ...] = (
             Check("身体成一直线", lambda v: v.ang("shoulder_mid", "hip_mid", "ankle_mid"), 178, 10, 25, 2.0),
             Check("身体接近水平", lambda v: v.horiz("shoulder_mid", "ankle_mid"), 10, 12, 25, 1.5),
             Check("肩在腕正上方", lambda v: v.vert("s_wrist", "s_shoulder"), 0, 15, 30, 1.5),
-            # 有符号：腕必须在肩**下方**，否则仰卧的反向支撑也会被算成平板式。
-            Check("手撑在身体下方", lambda v: v.dy("s_shoulder", "s_wrist"), 0.75, 0.40, 0.55, 1.5, ""),
+            # 取双手中较低的那只：只看主侧的话，侧板式那只撑地的手会蒙混过关。
+            Check("双手都撑在身体下方", _lowest_wrist_drop, 0.75, 0.40, 0.55, 2.0, ""),
+            # 与反板式对称的判据。两者在 2D 剪影上近乎镜像（身体成直线、接近水平、
+            # 双臂伸直撑地全都一样），头的朝向是唯一可靠的区别：平板式低头。
+            Check("头部朝下（俯卧）", lambda v: v.dy("nose", "shoulder_mid"), -0.30, 0.30, 0.40, 2.5, ""),
             Check("双臂伸直", _arms_extended, 176, 12, 30, 1.0),
         ),
         min_score=0.62,
@@ -216,6 +247,9 @@ TEMPLATES: tuple[Template, ...] = (
             Check("前膝屈 90°", lambda v: v.ang("s_hip", "s_knee", "s_ankle"), 92, 15, 33, 2.5),
             Check("后腿伸直", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 175, 13, 33, 2.0),
             Check("双臂水平成一线", lambda v: v.horiz("s_wrist", "o_wrist"), 0, 12, 26, 2.0),
+            # 「两腕连线水平」不足以区别于战士一式 —— 双臂上举时两腕同样等高。
+            # 真正的分水岭是手臂在**肩高**，所以必须显式约束腕与肩的高差。
+            Check("双臂与肩同高", lambda v: v.dy("shoulder_mid", "wrist_mid"), 0.0, 0.25, 0.40, 2.5, ""),
             Check("双臂伸直", _arms_extended, 174, 14, 32, 1.0),
             Check("躯干竖直", _spine_up, 0.97, 0.12, 0.30, 1.5, ""),
         ),
@@ -245,8 +279,13 @@ TEMPLATES: tuple[Template, ...] = (
         spine_up=(-0.40, 0.50),  # 躯干前倾到接近水平
         checks=(
             Check("躯干水平", lambda v: v.horiz("hip_mid", "shoulder_mid"), 0, 18, 30, 2.5),
+            # 没有这一项，一个平板式能在本模板上拿到 0.8 以上 —— 躯干水平、
+            # 双腿伸直、抬起腿水平三项它全满足。
+            Check("支撑脚在髋下方（站姿）", lambda v: v.dy("hip_mid", "s_ankle"), 1.60, 0.55, 0.55, 2.5, ""),
             Check("支撑腿伸直", lambda v: v.ang("s_hip", "s_knee", "s_ankle"), 176, 12, 30, 2.0),
-            Check("支撑腿竖直", lambda v: v.vert("s_hip", "s_ankle"), 0, 15, 30, 1.5),
+            # 单腿竖直支撑是战士三式的定义特征，权重要压住「躯干水平 + 双腿伸直」
+            # 这几项 —— 平板式恰好也满足那几项。
+            Check("支撑腿竖直", lambda v: v.vert("s_hip", "s_ankle"), 0, 15, 30, 2.5),
             Check("抬起腿伸直", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 175, 15, 35, 1.5),
             Check("抬起腿水平", lambda v: v.horiz("o_hip", "o_ankle"), 0, 20, 33, 1.5),
         ),
@@ -259,6 +298,8 @@ TEMPLATES: tuple[Template, ...] = (
         symmetric=False,
         spine_up=(0.25, 0.92),  # 躯干侧倾，但头仍在髋之上
         checks=(
+            # 站姿约束不可省：上犬式的躯干竖直分量也在 0.5 附近，会钻进上面的门槛。
+            Check("双脚在髋下方（站姿）", _feet_below_hips, 1.70, 0.70, 0.90, 2.5, ""),
             Check("躯干侧倾", _spine_up, 0.57, 0.20, 0.28, 2.5, ""),
             Check("双腿伸直", _legs_extended, 176, 13, 32, 2.0),
             Check("双臂成一线", lambda v: v.ang("s_wrist", "shoulder_mid", "o_wrist"), 170, 18, 35, 2.0),
@@ -277,6 +318,8 @@ TEMPLATES: tuple[Template, ...] = (
             # 权重给足，两个体式才不会互相抢。
             Check("前膝屈 90°", lambda v: v.ang("s_hip", "s_knee", "s_ankle"), 95, 18, 35, 2.5),
             Check("后腿伸直", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 175, 14, 33, 2.0),
+            # 屈前膝使髋位下沉，目标比三角伸展式低。
+            Check("双脚在髋下方（站姿）", _feet_below_hips, 1.35, 0.60, 0.80, 2.0, ""),
             Check("躯干侧倾", _spine_up, 0.50, 0.22, 0.32, 2.0, ""),
             Check("双臂成一线", lambda v: v.ang("s_wrist", "shoulder_mid", "o_wrist"), 166, 20, 38, 1.5),
             Check("下手贴近前脚", lambda v: v.dist("s_wrist", "s_ankle"), 0.55, 0.50, 0.70, 1.5, ""),
@@ -299,6 +342,123 @@ TEMPLATES: tuple[Template, ...] = (
             Check("躯干后弯", lambda v: v.ang("shoulder_mid", "hip_mid", "ankle_mid"), 150, 22, 38, 1.5),
         ),
         min_score=0.62,
+    ),
+    Template(
+        key="anjaneyasana",
+        zh="新月式",
+        en="Low Crescent Lunge",
+        symmetric=False,
+        spine_up=(0.72, 1.06),
+        checks=(
+            Check("前膝屈 90°", lambda v: v.ang("s_hip", "s_knee", "s_ankle"), 95, 22, 38, 2.0),
+            # 与战士一式的分水岭：新月式后膝跪地屈曲，战士一式后腿伸直。
+            # 两边权重对称，避免单向误判。
+            Check("后膝屈曲跪地", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 105, 35, 50, 2.0),
+            Check("后膝低于髋", lambda v: v.dy("hip_mid", "o_knee"), 0.80, 0.50, 0.70, 1.5, ""),
+            Check("双臂上举过头", lambda v: v.dy("wrist_mid", "shoulder_mid"), 0.85, 0.35, 0.50, 2.5, ""),
+            Check("躯干竖直", _spine_up, 0.95, 0.18, 0.35, 2.0, ""),
+        ),
+        min_score=0.64,
+    ),
+    Template(
+        key="ardha_hanumanasana",
+        zh="半神猴式",
+        en="Half Splits",
+        symmetric=False,
+        spine_up=(-0.35, 0.75),  # 上身前折，脊柱远离铅垂
+        checks=(
+            # 前腿伸直是与婴儿式的分水岭（婴儿式双膝都深屈），权重给最高。
+            Check("前腿伸直", lambda v: v.ang("s_hip", "s_knee", "s_ankle"), 175, 15, 32, 2.5),
+            Check("后膝屈曲跪地", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 90, 30, 45, 2.0),
+            Check("躯干前折", _spine_up, 0.25, 0.35, 0.45, 2.0, ""),
+            Check("前腿贴地伸展", lambda v: v.horiz("s_hip", "s_ankle"), 15, 20, 35, 1.5),
+        ),
+        min_score=0.64,
+    ),
+    Template(
+        key="pigeon",
+        zh="鸽子式",
+        en="Pigeon Pose",
+        symmetric=False,
+        spine_up=(0.35, 1.06),  # 躯干直立版本（睡鸽式前折不在此模板内）
+        checks=(
+            Check("前腿屈膝外旋", lambda v: v.ang("s_hip", "s_knee", "s_ankle"), 85, 30, 45, 2.0),
+            Check("后腿向后伸直", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 172, 18, 35, 2.0),
+            Check("后腿贴地水平", lambda v: v.horiz("o_hip", "o_ankle"), 8, 16, 30, 2.0),
+            # 髋部落地是鸽子式与新月式的分水岭：新月式髋位明显高于双踝。
+            Check("髋部贴近地面", lambda v: abs(v.dy("hip_mid", "ankle_mid")), 0.25, 0.40, 0.60, 2.0, ""),
+            Check("躯干直立", _spine_up, 0.85, 0.25, 0.40, 1.5, ""),
+        ),
+        min_score=0.64,
+    ),
+    Template(
+        key="chaturanga",
+        zh="四柱支撑式",
+        en="Chaturanga Dandasana",
+        symmetric=True,
+        spine_up=(-0.45, 0.45),
+        checks=(
+            # 屈肘 90° 是与平板式唯一的区别（平板式双臂伸直约 176°），
+            # 所以这一项权重最高。
+            Check("屈肘约 90°", _arms_extended, 95, 25, 40, 2.5),
+            Check("身体成一直线", lambda v: v.ang("shoulder_mid", "hip_mid", "ankle_mid"), 178, 12, 28, 2.0),
+            Check("身体接近水平", lambda v: v.horiz("shoulder_mid", "ankle_mid"), 8, 12, 25, 2.0),
+            Check("双手都撑在身体下方", _lowest_wrist_drop, 0.45, 0.35, 0.50, 2.0, ""),
+            Check("头部朝下（俯卧）", lambda v: v.dy("nose", "shoulder_mid"), -0.30, 0.30, 0.45, 1.5, ""),
+        ),
+        min_score=0.64,
+    ),
+    Template(
+        key="side_plank",
+        zh="侧板式",
+        en="Side Plank",
+        symmetric=False,
+        spine_up=(0.00, 0.90),  # 身体呈斜线，肩略高于髋
+        checks=(
+            Check("身体成一直线", lambda v: v.ang("shoulder_mid", "hip_mid", "ankle_mid"), 176, 14, 30, 2.0),
+            Check("支撑臂伸直", lambda v: v.ang("s_shoulder", "s_elbow", "s_wrist"), 176, 14, 32, 2.0),
+            Check("支撑臂接近竖直", lambda v: v.vert("s_wrist", "s_shoulder"), 10, 20, 35, 1.5),
+            Check("身体呈斜线", lambda v: v.horiz("shoulder_mid", "ankle_mid"), 25, 18, 32, 1.5),
+            Check("双腿伸直", _legs_extended, 175, 15, 33, 1.5),
+            # 上侧手臂向天空伸展 —— 与平板式（双手都在地面）的区别。
+            Check("上臂向上伸展", lambda v: v.dy("o_wrist", "s_shoulder"), 0.70, 0.50, 0.70, 2.0, ""),
+        ),
+        min_score=0.64,
+    ),
+    Template(
+        key="reverse_plank",
+        zh="反板式",
+        en="Reverse Plank",
+        symmetric=True,
+        spine_up=(-0.30, 0.55),
+        checks=(
+            # 平板式和反板式在 2D 剪影上接近镜像，最可靠的区别是头的朝向：
+            # 平板式低头（鼻低于肩），反板式仰头（鼻高于肩）。权重给足。
+            Check("头部后仰、胸腔朝上", lambda v: v.dy("nose", "shoulder_mid"), 0.35, 0.25, 0.30, 2.5, ""),
+            Check("身体成一直线", lambda v: v.ang("shoulder_mid", "hip_mid", "ankle_mid"), 172, 16, 32, 2.0),
+            Check("双臂伸直", _arms_extended, 174, 15, 33, 2.0),
+            # 与平板式同理必须双手撑地 —— 侧板式一手朝天，只看主侧会被它蒙混。
+            Check("双手都撑在肩后下方", _lowest_wrist_drop, 0.70, 0.45, 0.60, 2.0, ""),
+            Check("双腿伸直", _legs_extended, 174, 15, 32, 1.5),
+            Check("身体接近水平", lambda v: v.horiz("shoulder_mid", "ankle_mid"), 15, 18, 32, 1.5),
+        ),
+        min_score=0.66,  # 与平板式易混，门槛调高
+    ),
+    Template(
+        key="uttanasana",
+        zh="站立前屈式",
+        en="Standing Forward Bend",
+        symmetric=True,
+        spine_up=(-1.06, -0.30),  # 躯干自髋向下倒垂
+        checks=(
+            Check("躯干向下倒垂", _spine_up, -0.85, 0.30, 0.40, 2.5, ""),
+            Check("双腿伸直", _legs_extended, 176, 14, 32, 2.5),
+            # 双腿竖直是与下犬式的分水岭：下犬式手脚分开，腿与铅垂线约 45°。
+            Check("双腿竖直", lambda v: v.vert("hip_mid", "ankle_mid"), 0, 12, 26, 2.0),
+            Check("双脚在髋下方（站姿）", _feet_below_hips, 1.90, 0.70, 0.90, 2.0, ""),
+            Check("头部低于髋部", lambda v: v.dy("hip_mid", "nose"), 1.10, 0.60, 0.80, 1.5, ""),
+        ),
+        min_score=0.64,
     ),
     Template(
         key="tree",
