@@ -1,5 +1,18 @@
 # Faye_Pivlot
 
+仓库里有两个独立的瑜伽工具，共用一套 MediaPipe 姿态估计底座，但代码互不引用：
+
+| 工具 | 做什么 | 文档 |
+|------|--------|------|
+| `yoga_grid` | 事后复盘：从练习视频里抓正位帧，拼成九宫格 | 本文以下全部 |
+| `yoga_coach` | 实时纠正：摄像头打分并给出具体调整建议 | [docs/yoga_coach.md](docs/yoga_coach.md) |
+
+两者的体式模板是各自独立的（`yoga_grid` 20 个、`yoga_coach` 9 个），目标值和容差
+也各自校准——`yoga_grid` 按 2D 投影下的真实练习数据，`yoga_coach` 按通用课口令。
+改了一边不会自动影响另一边。
+
+---
+
 ## yoga_grid —— 从瑜伽练习视频抓正位帧，拼成九宫格
 
 给一支十几分钟的练习视频，输出一张 3×3 的九宫格图：九个不同体式，每个取该体式做得最到位的那一帧。
@@ -46,7 +59,7 @@ sudo apt-get install -y libegl1 libgles2
 装完先跑一遍测试确认环境没问题（不需要视频）：
 
 ```bash
-python tests/test_geometry.py
+python tests/test_grid_geometry.py
 ```
 
 ### Windows 补充
@@ -271,12 +284,17 @@ out/
 ## 测试
 
 ```bash
-python tests/test_geometry.py      # 或 python -m pytest tests/ -q
+python -m pytest tests/ -q                 # 两个工具的测试都在这里
+python tests/test_grid_geometry.py         # 只跑 yoga_grid 的几何部分
 ```
 
-`test_geometry.py` 覆盖角度计算、归一化的平移/尺度不变性、镜像置换、朝向门槛、聚类分组、打分分量，以及跨平台回归（requirements.txt 纯 ASCII、Unicode 路径写图）。
+`tests/` 目录是两个工具共用的，文件名前缀区分归属：`test_grid_*` 属于
+`yoga_grid`，其余属于 `yoga_coach`。两边的测试都不需要 MediaPipe，
+`pip install -r requirements-dev.txt` 就够跑。
 
-`test_templates.py` 是**模板区分度网**：遍历 `yoga_grid/reference.py` 里每个体式的标准骨架，断言最高分模板就是它自己；另外检查每个体式都有发力要点、每个要点的锚点都能解析、20 张线稿与对照卡都能渲染。
+`test_grid_geometry.py` 覆盖角度计算、归一化的平移/尺度不变性、镜像置换、朝向门槛、聚类分组、打分分量，以及跨平台回归（requirements.txt 纯 ASCII、Unicode 路径写图）。
+
+`test_grid_templates.py` 是**模板区分度网**：遍历 `yoga_grid/reference.py` 里每个体式的标准骨架，断言最高分模板就是它自己；另外检查每个体式都有发力要点、每个要点的锚点都能解析、20 张线稿与对照卡都能渲染。
 
 ### 模板互相误判
 
@@ -294,4 +312,4 @@ python tests/test_geometry.py      # 或 python -m pytest tests/ -q
 | 侧角伸展式被判成半神猴式 | 半神猴式缺「髋位低（跪姿）」——跪姿双踝只在髋下 0.4，站姿弓步是 1.0~1.2 |
 | 金字塔式被判成站立前屈式 | 站立前屈式缺「双脚并拢」——并拢时两踝水平距 0.02~0.35，金字塔式前后错开是 0.58~1.53。真实视频里一个 22 帧的簇混了两个体式，其中 19 帧是金字塔式 |
 
-`test_templates.py` 把这些判据全部钉死，调容差或加模板时若破坏任何一对区分，测试会立刻指出被谁抢走了。所有骨架都是手搭的，不依赖视频或模型文件。
+`test_grid_templates.py` 把这些判据全部钉死，调容差或加模板时若破坏任何一对区分，测试会立刻指出被谁抢走了。所有骨架都是手搭的，不依赖视频或模型文件。

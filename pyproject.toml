@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "faye-pivlot"
+version = "0.1.0"
+description = "两个瑜伽工具：yoga_coach 实时纠正体式，yoga_grid 从练习视频拼九宫格"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+# Version ranges must stay in step with requirements.txt -- the names are
+# checked by tests/test_packaging.py, the ranges are on us.  The floor is
+# 0.10.21 for the sake of Intel Macs, which have no 1.0 wheel; see the note
+# in requirements.txt.
+dependencies = [
+    "mediapipe>=0.10.21,<2.0",
+    "opencv-python>=4.8",
+    "numpy>=1.24",
+    "pillow>=10.1",
+]
+
+[project.optional-dependencies]
+speech = ["pyttsx3>=2.90"]
+dev = ["pytest>=7.0", "pyflakes>=3.0"]
+
+[project.scripts]
+yoga-coach = "yoga_coach.cli:main"
+yoga-grid = "yoga_grid.cli:main"
+
+[tool.setuptools]
+packages = ["yoga_coach", "yoga_grid"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

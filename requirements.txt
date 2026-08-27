@@ -1,13 +1,30 @@
 # NOTE: keep this file pure ASCII. pip decodes requirements.txt using the
 # system locale encoding unless the file has a BOM, so non-ASCII comments
 # break `pip install -r` on Windows (cp1252 / cp936) with a UnicodeDecodeError.
+# tests/test_packaging.py enforces this.
+#
+# Shared runtime dependencies for both tools in this repo: yoga_grid (practice
+# video to a 3x3 grid of aligned frames) and yoga_coach (realtime webcam
+# coaching).
 #
 # MediaPipe 1.0 ships wheels only for Apple Silicon, Linux and Windows.
 # Intel Macs need the 0.10.x line (wheels cover Python 3.9-3.12). Both lines
-# expose the same tasks API this project uses (mp.tasks.vision,
-# mp.tasks.BaseOptions, mp.Image); the full pipeline and the test suite were
-# verified on 0.10.21 and 1.0.1 with identical results. See README.md.
-mediapipe>=0.10.21
-opencv-python-headless>=4.8
+# expose the same tasks API both tools use (mp.tasks.vision,
+# mp.tasks.BaseOptions, mp.Image). yoga_grid ran its full pipeline and test
+# suite on 0.10.21 and 1.0.1 with identical results; yoga_coach has only been
+# exercised on the 1.0 line, so 0.10.x is permitted for the sake of Intel Mac
+# users but is unverified for the coach. The smoke job pins nothing and tests
+# whatever pip resolves.
+mediapipe>=0.10.21,<2.0
+# Deliberately NOT the -headless build. yoga_coach opens a preview window
+# (cv2.imshow / namedWindow / waitKey), which headless OpenCV does not carry.
+# This build is a superset of headless, so yoga_grid is unaffected. The dev
+# requirements do use headless: the tests draw frames but never open a window.
+opencv-python>=4.8
 numpy>=1.24
-pillow>=10.0
+# 10.1 is where ImageFont.load_default() gained its size argument, which the
+# yoga_coach renderer uses when no CJK font is installed.
+pillow>=10.1
+
+# Optional: spoken corrections in yoga_coach (`--speak`). Uncomment to enable.
+# pyttsx3>=2.90

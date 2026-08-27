@@ -51,7 +51,7 @@ def test_sequence_takes_max_not_count():
 
 def test_other_dates_and_names_are_ignored():
     root = _tmp()
-    (root / f"九宫格_20260101_07.jpg").touch()      # 别的日期
+    (root / "九宫格_20260101_07.jpg").touch()      # 别的日期
     (root / f"标准对照图_{STAMP}_09.jpg").touch()     # 别的前缀
     (root / f"九宫格_{STAMP}_03.png").touch()        # 别的扩展名
     (root / "九宫格.jpg").touch()                    # 无戳的旧文件
