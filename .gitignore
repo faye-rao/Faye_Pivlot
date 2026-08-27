@@ -14,6 +14,11 @@ dist/
 # yoga_grid run output
 out/
 
+# Scratch git worktrees created for background agents. Transient tooling
+# state, not project content -- but `.claude/` itself is not ignored, since
+# project config and skills under it are meant to be committed.
+.claude/worktrees/
+
 # Video material: practice recordings are large and regenerable. Images are
 # deliberately NOT listed -- the patterns below are video only, so any image
 # added to the repo will be committed rather than silently skipped.
