@@ -108,6 +108,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--order", choices=("time", "score"), default="time", help="九宫格排列顺序")
     run.add_argument("--no-candidates", action="store_true", help="不导出候选帧缩略图")
+    run.add_argument(
+        "--no-landmarks", action="store_true",
+        help="scores.json 里不存归一化骨架（省约 0.5 KB/帧，但之后无法离线复算体式模板）",
+    )
     run.add_argument("--list-poses", action="store_true", help="列出内置体式模板后退出")
     _add_grid_options(run)
 
@@ -280,6 +284,7 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
     report.dump_json(
         out_dir / "scores.json", info, candidates, selection, params,
         n_detected=n_detected, n_segments=len(segments),
+        include_landmarks=not args.no_landmarks,
     )
     report.write_report(
         out_dir / "report.md", info, selection,
