@@ -524,6 +524,116 @@ DOWN_DOG = PoseSpec(
 )
 
 # --------------------------------------------------------------------------
+# 上犬式 Upward-Facing Dog -- side = the side facing the camera
+#
+# Two poses this has to be told apart from, which is what fixes the choice of
+# checks: Plank shares the straight arms, the shoulders over the wrists and the
+# straight legs, and differs only in that the torso is level rather than
+# reared up -- hence ``torso_incline``, the heaviest check here.  Cobra
+# (not in the library, but what a beginner drifts into) keeps the hips and
+# thighs on the floor -- hence ``hips_off_floor``.
+#
+# Two cues from the teaching are deliberately absent because a side-on webcam
+# cannot measure them: "shoulders away from the ears" is confounded by the
+# lifted head, which raises the ear relative to the shoulder even in a good
+# version, and "don't crank the neck back" needs the far ear, which MediaPipe
+# guesses in profile.  A check that cannot see what it claims to see is worse
+# than no check.
+# --------------------------------------------------------------------------
+
+UP_DOG = PoseSpec(
+    key="updog",
+    name=Text("上犬式", "Upward Dog"),
+    sanskrit="Urdhva Mukha Svanasana",
+    view=Text("摄像头放在身体侧面，与地面同高", "Camera to your side, at floor height"),
+    cue=Text("胸腔向前穿过双臂，大腿离地", "Draw the chest through the arms, thighs off the floor"),
+    symmetric=False,
+    min_coverage=0.6,
+    checks=(
+        Check(
+            key="torso_incline",
+            label=Text("躯干仰角", "Torso reared up"),
+            # 0 would be a torso standing straight up over the hips, 90 a level
+            # one.  Plank reads about 79 here and Down Dog about 140, so this
+            # single check is what keeps the three apart.
+            metric=m.from_vertical("{s}_hip", "{s}_shoulder"),
+            low=12.0,
+            high=52.0,
+            falloff=25.0,
+            weight=1.6,
+            when_low=Text(
+                "上身太竖直了，髋部向后落一些，或者手掌向前挪",
+                "Too vertical -- slide the hips back, or walk the hands forward",
+            ),
+            when_high=Text(
+                "胸腔向前向上推穿过双臂，别停在平板上",
+                "Press the chest forward and up through the arms, this is still a plank",
+            ),
+            focus=("{s}_shoulder", "{s}_hip"),
+        ),
+        Check(
+            key="hips_off_floor",
+            label=Text("髋部离地", "Hips off the floor"),
+            # The hands and the tops of the feet are the only things on the
+            # floor, so the wrist->ankle line *is* the floor line and the hip
+            # should sit well above it.  Assumes the camera is near floor
+            # height; a high camera tilts that reference line.
+            metric=m.line_offset("{s}_wrist", "{s}_hip", "{s}_ankle"),
+            low=0.10,
+            falloff=0.30,
+            weight=1.3,
+            unit="×",
+            when_low=Text(
+                "大腿和骨盆推离地面，只有手掌和脚背落地",
+                "Lift the thighs and pelvis off the mat -- only hands and feet stay down",
+            ),
+            focus=("{s}_hip",),
+        ),
+        Check(
+            key="legs_along_floor",
+            label=Text("双腿贴地向后", "Legs along the floor"),
+            # Without this, standing upright is a *perfect* Up Dog: vertical
+            # arms, a near-vertical torso, straight legs and hips well clear of
+            # the wrist->ankle line all read as correct.  The legs are what
+            # tell the two apart -- level and reaching back here, hanging
+            # straight down in Mountain.  It also separates Up Dog from Down
+            # Dog, whose legs climb at 60 degrees.
+            metric=m.from_horizontal("{s}_hip", "{s}_ankle"),
+            high=25.0,
+            falloff=30.0,
+            weight=1.4,
+            when_high=Text(
+                "双腿向后伸展贴近地面，别把膝盖收到身体下面",
+                "Reach the legs straight back along the mat, not tucked under you",
+            ),
+            focus=("{s}_hip", "{s}_ankle"),
+        ),
+        Check(
+            key="shoulder_over_wrist",
+            label=Text("肩在腕正上方", "Shoulder over wrist"),
+            metric=m.horizontal_gap("{s}_shoulder", "{s}_wrist"),
+            high=0.25,
+            falloff=0.35,
+            weight=1.2,
+            unit="×",
+            when_high=Text("手掌撑在肩膀正下方，手臂垂直地面", "Stack the shoulders over the wrists"),
+            focus=("{s}_shoulder", "{s}_wrist"),
+        ),
+        *_straight_arms(low=160.0, weight=1.2),
+        *bilateral(
+            key="leg_straight",
+            label=Text("腿伸直", "Leg straight"),
+            metric_of=lambda s: m.joint_angle(f"{s}_hip", f"{s}_knee", f"{s}_ankle"),
+            low=160.0,
+            falloff=30.0,
+            weight=0.9,
+            when_low=Text("双腿向后蹬直，脚背压地", "Straighten the legs back, press the tops of the feet down"),
+            focus=("{s}_knee",),
+        ),
+    ),
+)
+
+# --------------------------------------------------------------------------
 # 平板支撑 Plank -- side = the side facing the camera
 # --------------------------------------------------------------------------
 
@@ -676,6 +786,7 @@ POSES: tuple[PoseSpec, ...] = (
     WARRIOR_I,
     TRIANGLE,
     DOWN_DOG,
+    UP_DOG,
     PLANK,
     CHAIR,
 )

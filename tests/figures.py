@@ -239,6 +239,53 @@ DOWN_DOG_HEELS_UP: dict[str, tuple[float, float]] = {
     "right_heel": (0.863, 0.764),
 }
 
+#: A side-on Upward Dog, hands at the left and feet at the right.  The floor is
+#: again y=0.900: the wrists are on it, the arms are 0.340 long and vertical, so
+#: the shoulder is at (0.180, 0.560).  The torso is 0.290 long and tilted 35
+#: degrees back from vertical, putting the hip at (0.346, 0.798) -- 0.31 torso
+#: lengths clear of the wrist->ankle floor line.  The legs are straight and
+#: 1.7 torsos long, which fixes the ankle at (0.843, 0.850).
+UP_DOG_SIDE: dict[str, tuple[float, float]] = {
+    **STANDING,
+    # chest open, gaze forward and slightly up
+    "nose": (0.115, 0.492),
+    "left_ear": (0.152, 0.502),
+    "right_ear": (0.155, 0.506),
+    "left_eye": (0.128, 0.486),
+    "right_eye": (0.131, 0.490),
+    "left_eye_inner": (0.134, 0.487),
+    "right_eye_inner": (0.137, 0.491),
+    "left_eye_outer": (0.122, 0.485),
+    "right_eye_outer": (0.125, 0.489),
+    "mouth_left": (0.120, 0.510),
+    "mouth_right": (0.123, 0.514),
+    # arms vertical, elbow at the midpoint -> straight
+    "left_shoulder": (0.180, 0.560),
+    "right_shoulder": (0.183, 0.564),
+    "left_elbow": (0.180, 0.730),
+    "right_elbow": (0.183, 0.734),
+    "left_wrist": (0.180, 0.900),
+    "right_wrist": (0.183, 0.904),
+    "left_pinky": (0.205, 0.912),
+    "right_pinky": (0.208, 0.916),
+    "left_index": (0.212, 0.906),
+    "right_index": (0.215, 0.910),
+    "left_thumb": (0.192, 0.896),
+    "right_thumb": (0.195, 0.900),
+    # pelvis lifted clear of the mat
+    "left_hip": (0.346, 0.798),
+    "right_hip": (0.349, 0.802),
+    "left_knee": (0.595, 0.824),
+    "right_knee": (0.598, 0.828),
+    "left_ankle": (0.843, 0.850),
+    "right_ankle": (0.846, 0.854),
+    # tops of the feet on the floor, so the heel rides above the toes
+    "left_heel": (0.862, 0.868),
+    "right_heel": (0.865, 0.872),
+    "left_foot_index": (0.900, 0.896),
+    "right_foot_index": (0.903, 0.900),
+}
+
 
 #: Landmarks the far side of the body loses in any side-on pose.  MediaPipe
 #: reports them with low visibility because they are behind the near side --
