@@ -112,8 +112,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--order", choices=("time", "score"), default="time", help="九宫格排列顺序")
     run.add_argument("--no-candidates", action="store_true", help="不导出候选帧缩略图")
     run.add_argument(
-        "--no-compare", action="store_true",
-        help="不生成标准体式对照图",
+        "--compare", action="store_true",
+        help="生成标准体式对照图（骨架线稿版；默认不出）",
     )
     run.add_argument(
         "--no-face-mask", action="store_true",
@@ -130,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     grid.add_argument("out", type=Path, help="上次运行的输出目录（含 scores.json）")
     grid.add_argument("--video", type=Path, default=None, help="视频路径（默认取 scores.json 里记录的）")
     grid.add_argument("--no-face-mask", action="store_true", help="不给露出的人脸盖卡通面具")
-    grid.add_argument("--no-compare", action="store_true", help="不重新生成标准体式对照图")
+    grid.add_argument("--compare", action="store_true", help="生成标准体式对照图（骨架线稿版；默认不出）")
     _add_grid_options(grid)
 
     again = sub.add_parser(
@@ -151,7 +151,7 @@ def build_parser() -> argparse.ArgumentParser:
     again.add_argument("--order", choices=("time", "score"), default="time",
                        help="九宫格排列顺序")
     again.add_argument("--no-face-mask", action="store_true", help="不给露出的人脸盖卡通面具")
-    again.add_argument("--no-compare", action="store_true", help="不生成标准体式对照图")
+    again.add_argument("--compare", action="store_true", help="生成标准体式对照图（骨架线稿版；默认不出）")
     _add_grid_options(again)
 
     ref = sub.add_parser("reference", help="导出标准体式库（每个体式一张对照卡）")
@@ -321,7 +321,7 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
     image.save(grid_path, quality=94, subsampling=1)
 
     compare_path = None
-    if not args.no_compare:
+    if args.compare:
         compare_path = out_dir / DEFAULT_COMPARE_NAME
         build_comparison(raw_picks, selection.picks, style, font_path=args.font).save(
             compare_path, quality=92, subsampling=1
@@ -394,7 +394,7 @@ def cmd_grid(args: argparse.Namespace) -> int:
     grid_path = args.out / DEFAULT_GRID_NAME
     image.save(grid_path, quality=94, subsampling=1)
     print(f"已用 {len(picks)} 张重拼：{grid_path}", file=sys.stderr)
-    if not args.no_compare:
+    if args.compare:
         compare_path = args.out / DEFAULT_COMPARE_NAME
         build_comparison(raw, picks, style, font_path=args.font).save(
             compare_path, quality=92, subsampling=1
@@ -466,14 +466,17 @@ def cmd_rescore(args: argparse.Namespace) -> int:
     if not args.no_face_mask:
         print(f"      {n_masked}/{len(by_frame)} 帧检测到人脸并已遮挡", file=sys.stderr)
 
-    print("[4/4] 重出九宫格与对照图…", file=sys.stderr)
+    print(
+        "[4/4] 重出九宫格" + ("与对照图…" if args.compare else "…"),
+        file=sys.stderr,
+    )
     style = _grid_style(args)
     image = build_grid(raw, selection.picks, style, frames_dir=args.out / "frames")
     grid_path = args.out / DEFAULT_GRID_NAME
     image.save(grid_path, quality=94, subsampling=1)
 
     compare_path = None
-    if not args.no_compare:
+    if args.compare:
         compare_path = args.out / DEFAULT_COMPARE_NAME
         build_comparison(raw, selection.picks, style, font_path=args.font).save(
             compare_path, quality=92, subsampling=1
