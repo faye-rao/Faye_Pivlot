@@ -95,6 +95,29 @@ def test_run_sequence_shares_one_number_across_outputs():
         )
 
 
+def test_clear_generated_only_removes_own_files():
+    """清理只删匹配自己命名规则的文件，用户放进去的东西要保留。
+
+    这条清理是必需的：frames/ 和 candidates/ 的文件名带体式名和时间戳，换一次
+    模板新文件就换个名字，旧文件不会被覆盖。两代结果混在目录里已经真实导致过
+    误判 —— 一个上一轮遗留的 `02_unknown_...jpg` 让人以为本轮没识别出那个体式。
+    """
+    root = _tmp()
+    (root / "01_warrior2_0001.44s.jpg").touch()
+    (root / "02_unknown_0098.72s.jpg").touch()      # 上一轮遗留
+    (root / "我的笔记.txt").touch()                  # 用户自己的文件
+    (root / "子目录").mkdir()
+
+    removed = naming.clear_generated(root, "*.jpg")
+    assert removed == 2
+    names = {e.name for e in root.iterdir()}
+    assert names == {"我的笔记.txt", "子目录"}
+
+
+def test_clear_generated_tolerates_missing_directory():
+    assert naming.clear_generated(_tmp() / "不存在", "*.jpg") == 0
+
+
 def test_today_stamp_shape():
     stamp = naming.today_stamp()
     assert len(stamp) == 8 and stamp.isdigit()

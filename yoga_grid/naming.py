@@ -55,3 +55,24 @@ def run_sequence(out_dir: Path, bases: list[tuple[str, str]], stamp: str | None 
         (next_sequence(out_dir, base, suffix, stamp) for base, suffix in bases),
         default=1,
     )
+
+
+def clear_generated(directory: Path, pattern: str) -> int:
+    """删掉目录里由本程序生成的旧文件，返回删除数量。
+
+    只删**匹配自己命名规则**的文件，不清空整个目录 —— 用户可能往里放了别的东西。
+
+    为什么必须清：``frames/`` 和 ``candidates/`` 的文件名带时间戳和体式名，
+    换一次模板或改一次聚类参数，新文件就换了名字，旧文件留在原地不会被覆盖。
+    于是目录里同时存在两代结果，看文件名根本分不出哪个是本次的 —— 这已经真实
+    导致过误判：一个上一轮留下的 `02_unknown_0098.72s.jpg` 让人以为本轮没识别出
+    那个体式，而本轮其实识别对了。
+    """
+    if not directory.is_dir():
+        return 0
+    removed = 0
+    for entry in directory.glob(pattern):
+        if entry.is_file():
+            entry.unlink()
+            removed += 1
+    return removed

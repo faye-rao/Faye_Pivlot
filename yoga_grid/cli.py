@@ -289,6 +289,9 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
     cand_dir = out_dir / "candidates"
     if not args.no_candidates:
         cand_dir.mkdir(parents=True, exist_ok=True)
+        stale = naming.clear_generated(cand_dir, "*.jpg")
+        if stale:
+            print(f"      清理上一轮遗留的 {stale} 张候选缩略图", file=sys.stderr)
 
     raw_picks = {}
     n_masked = 0

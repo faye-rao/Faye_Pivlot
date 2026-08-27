@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from . import compat
+from . import compat, naming
 from .score import Candidate
 
 # 常见的中文字体，按平台顺序试。列表里只放确定含中日韩字形的字体，
@@ -194,6 +194,9 @@ def build_grid(
 
     if frames_dir is not None:
         frames_dir.mkdir(parents=True, exist_ok=True)
+        # 先清掉上一轮的裁切图：文件名带体式名和时间戳，换一次模板就换个名字，
+        # 旧文件不会被覆盖，两代结果混在一起会让人读错本轮的识别结果。
+        naming.clear_generated(frames_dir, "*.jpg")
 
     for slot, cand in enumerate(picks):
         frame = raw.get(cand.frame.frame_no)

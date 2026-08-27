@@ -288,19 +288,29 @@ TEMPLATES: tuple[Template, ...] = (
             Check("支撑腿竖直", lambda v: v.vert("s_hip", "s_ankle"), 0, 15, 30, 2.5),
             Check("抬起腿伸直", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 175, 15, 35, 1.5),
             Check("抬起腿水平", lambda v: v.horiz("o_hip", "o_ankle"), 0, 20, 33, 1.5),
+            # 单脚离地才是战士三式的定义特征，权重最高。三角伸展式双脚都在地面，
+            # 这个量约为 0；战士三式约为 2（一脚在地、一脚抬到髋高）。
+            # 实测真实视频里的三角伸展式：0.20 —— 缺这一条时它在本模板上拿了 0.88。
+            # 这个判据几乎不受机位影响，而「躯干水平」「腿伸直」都会被投影带偏。
+            Check("抬起脚远高于支撑脚", lambda v: v.dy("o_ankle", "s_ankle"), 1.70, 0.70, 0.70, 3.0, ""),
         ),
         min_score=0.64,
     ),
     Template(
         key="triangle",
-        zh="三角式",
+        zh="三角伸展式",
         en="Triangle",
         symmetric=False,
-        spine_up=(0.25, 0.92),  # 躯干侧倾，但头仍在髋之上
+        # 上界留给浅版本，下界要低到 0 附近 —— 真实练习里躯干常沉到接近水平，
+        # 实测某支视频的三角伸展式是 -0.01。按教科书插画取 (0.25, 0.92) 会把
+        # 深度版本判到区间外，于是「正确的模板先把自己排除了」，让战士三式抢走。
+        spine_up=(-0.18, 0.92),
         checks=(
             # 站姿约束不可省：上犬式的躯干竖直分量也在 0.5 附近，会钻进上面的门槛。
-            Check("双脚在髋下方（站姿）", _feet_below_hips, 1.70, 0.70, 0.90, 2.5, ""),
-            Check("躯干侧倾", _spine_up, 0.57, 0.20, 0.28, 2.5, ""),
+            # 门槛放宽后这条更关键，slack 收紧到 0.55（上犬式的 0.30 直接归零）。
+            Check("双脚在髋下方（站姿）", _feet_below_hips, 1.70, 0.70, 0.55, 2.5, ""),
+            # 目标下移、容差放宽，覆盖「教科书 55°」到「深度接近水平」整个区间。
+            Check("躯干侧倾", _spine_up, 0.30, 0.40, 0.35, 2.0, ""),
             Check("双腿伸直", _legs_extended, 176, 13, 32, 2.0),
             Check("双臂成一线", lambda v: v.ang("s_wrist", "shoulder_mid", "o_wrist"), 170, 18, 35, 2.0),
             Check("双臂接近竖直", lambda v: v.vert("s_wrist", "o_wrist"), 15, 20, 33, 1.5),
@@ -312,15 +322,17 @@ TEMPLATES: tuple[Template, ...] = (
         zh="侧角伸展式",
         en="Extended Side Angle",
         symmetric=False,
-        spine_up=(0.20, 0.88),  # 躯干朝前腿侧大幅倾斜，头仍高于髋
+        # 比三角伸展式还要低：侧角伸展式的躯干本就该贴近前侧大腿、接近水平。
+        # 实测某支视频：+0.10。
+        spine_up=(-0.18, 0.88),
         checks=(
             # 与三角伸展式的分水岭就是这一项：侧角伸展屈前膝，三角伸展前腿伸直。
             # 权重给足，两个体式才不会互相抢。
             Check("前膝屈 90°", lambda v: v.ang("s_hip", "s_knee", "s_ankle"), 95, 18, 35, 2.5),
             Check("后腿伸直", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 175, 14, 33, 2.0),
             # 屈前膝使髋位下沉，目标比三角伸展式低。
-            Check("双脚在髋下方（站姿）", _feet_below_hips, 1.35, 0.60, 0.80, 2.0, ""),
-            Check("躯干侧倾", _spine_up, 0.50, 0.22, 0.32, 2.0, ""),
+            Check("双脚在髋下方（站姿）", _feet_below_hips, 1.35, 0.60, 0.55, 2.5, ""),
+            Check("躯干侧倾", _spine_up, 0.28, 0.38, 0.35, 2.0, ""),
             Check("双臂成一线", lambda v: v.ang("s_wrist", "shoulder_mid", "o_wrist"), 166, 20, 38, 1.5),
             Check("下手贴近前脚", lambda v: v.dist("s_wrist", "s_ankle"), 0.55, 0.50, 0.70, 1.5, ""),
         ),
@@ -370,6 +382,10 @@ TEMPLATES: tuple[Template, ...] = (
             # 前腿伸直是与婴儿式的分水岭（婴儿式双膝都深屈），权重给最高。
             Check("前腿伸直", lambda v: v.ang("s_hip", "s_knee", "s_ankle"), 175, 15, 32, 2.5),
             Check("后膝屈曲跪地", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 90, 30, 45, 2.0),
+            # 跪姿：髋位低，双踝只在髋下 0.4 左右；站姿弓步是 1.0~1.2。
+            # 实测真实视频里的侧角伸展式（站姿）：1.05 —— 缺这一条时它在本模板上
+            # 拿了 0.92，把真正的侧角伸展式挤掉了。
+            Check("髋位低（跪姿）", _feet_below_hips, 0.42, 0.28, 0.30, 2.5, ""),
             Check("躯干前折", _spine_up, 0.25, 0.35, 0.45, 2.0, ""),
             Check("前腿贴地伸展", lambda v: v.horiz("s_hip", "s_ankle"), 15, 20, 35, 1.5),
         ),
@@ -387,6 +403,7 @@ TEMPLATES: tuple[Template, ...] = (
             Check("后腿贴地水平", lambda v: v.horiz("o_hip", "o_ankle"), 8, 16, 30, 2.0),
             # 髋部落地是鸽子式与新月式的分水岭：新月式髋位明显高于双踝。
             Check("髋部贴近地面", lambda v: abs(v.dy("hip_mid", "ankle_mid")), 0.25, 0.40, 0.60, 2.0, ""),
+            Check("髋位低（跪姿）", _feet_below_hips, 0.42, 0.35, 0.35, 2.0, ""),
             Check("躯干直立", _spine_up, 0.85, 0.25, 0.40, 1.5, ""),
         ),
         min_score=0.64,
