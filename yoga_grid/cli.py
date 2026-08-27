@@ -14,7 +14,7 @@ from pathlib import Path
 
 import cv2
 
-from . import compat, faces, reference, report, rescore
+from . import compat, faces, naming, reference, report, rescore
 from .cluster import cluster_candidates
 from .compare import build_comparison
 from .explain import explain
@@ -26,8 +26,12 @@ from .score import build_candidates
 from .select import select
 from .stability import auto_threshold, find_holds, velocities
 
-DEFAULT_GRID_NAME = "九宫格.jpg"
-DEFAULT_COMPARE_NAME = "标准对照图.jpg"
+# 产物文件名的 (前缀, 扩展名)。实际落盘时会插入日期和当天序号，
+# 形如 九宫格_20260828_01.jpg —— 一天里多次运行才不会互相覆盖。
+GRID_BASE = ("九宫格", ".jpg")
+COMPARE_BASE = ("标准对照图", ".jpg")
+REPORT_BASE = ("report", ".md")
+OUTPUT_BASES = [GRID_BASE, COMPARE_BASE, REPORT_BASE]
 
 
 def _resize_long_side(frame, long_side: int):
@@ -316,13 +320,15 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
     if style.labels and args.font is None and find_cjk_font() is None:
         print("      找不到中文字体，标签改用英文体式名（可用 --font 指定）", file=sys.stderr)
 
+    # 同一次运行的产物共用一个序号，事后才对得上是哪次跑的。
+    seq = naming.run_sequence(out_dir, OUTPUT_BASES)
     image = build_grid(raw_picks, selection.picks, style, frames_dir=out_dir / "frames")
-    grid_path = out_dir / DEFAULT_GRID_NAME
+    grid_path = naming.stamped_path(out_dir, *GRID_BASE, sequence=seq)
     image.save(grid_path, quality=94, subsampling=1)
 
     compare_path = None
     if args.compare:
-        compare_path = out_dir / DEFAULT_COMPARE_NAME
+        compare_path = naming.stamped_path(out_dir, *COMPARE_BASE, sequence=seq)
         build_comparison(raw_picks, selection.picks, style, font_path=args.font).save(
             compare_path, quality=92, subsampling=1
         )
@@ -346,9 +352,10 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
         n_detected=n_detected, n_segments=len(segments),
         include_landmarks=not args.no_landmarks,
     )
+    report_path = naming.stamped_path(out_dir, *REPORT_BASE, sequence=seq)
     report.write_report(
-        out_dir / "report.md", info, selection,
-        n_candidates=len(candidates), grid_name=DEFAULT_GRID_NAME,
+        report_path, info, selection,
+        n_candidates=len(candidates), grid_name=grid_path.name,
     )
 
     elapsed = time.monotonic() - started
@@ -359,7 +366,7 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
     print(f"  单张     {out_dir / 'frames'}", file=sys.stderr)
     if not args.no_candidates:
         print(f"  候选帧   {cand_dir}", file=sys.stderr)
-    print(f"  复盘     {out_dir / 'report.md'}", file=sys.stderr)
+    print(f"  复盘     {report_path}", file=sys.stderr)
     print(f"  分数     {out_dir / 'scores.json'}", file=sys.stderr)
     return 0
 
@@ -390,12 +397,13 @@ def cmd_grid(args: argparse.Namespace) -> int:
             raw[frame_no] = bgr
     finally:
         cleanup_video()
+    seq = naming.run_sequence(args.out, OUTPUT_BASES)
     image = build_grid(raw, picks, style, frames_dir=args.out / "frames")
-    grid_path = args.out / DEFAULT_GRID_NAME
+    grid_path = naming.stamped_path(args.out, *GRID_BASE, sequence=seq)
     image.save(grid_path, quality=94, subsampling=1)
     print(f"已用 {len(picks)} 张重拼：{grid_path}", file=sys.stderr)
     if args.compare:
-        compare_path = args.out / DEFAULT_COMPARE_NAME
+        compare_path = naming.stamped_path(args.out, *COMPARE_BASE, sequence=seq)
         build_comparison(raw, picks, style, font_path=args.font).save(
             compare_path, quality=92, subsampling=1
         )
@@ -471,13 +479,14 @@ def cmd_rescore(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     style = _grid_style(args)
+    seq = naming.run_sequence(args.out, OUTPUT_BASES)
     image = build_grid(raw, selection.picks, style, frames_dir=args.out / "frames")
-    grid_path = args.out / DEFAULT_GRID_NAME
+    grid_path = naming.stamped_path(args.out, *GRID_BASE, sequence=seq)
     image.save(grid_path, quality=94, subsampling=1)
 
     compare_path = None
     if args.compare:
-        compare_path = args.out / DEFAULT_COMPARE_NAME
+        compare_path = naming.stamped_path(args.out, *COMPARE_BASE, sequence=seq)
         build_comparison(raw, selection.picks, style, font_path=args.font).save(
             compare_path, quality=92, subsampling=1
         )
@@ -497,16 +506,17 @@ def cmd_rescore(args: argparse.Namespace) -> int:
         n_detected=int((payload.get("summary") or {}).get("detected_frames") or 0),
         n_segments=int((payload.get("summary") or {}).get("hold_segments") or 0),
     )
+    report_path = naming.stamped_path(args.out, *REPORT_BASE, sequence=seq)
     report.write_report(
-        args.out / "report.md", info, selection,
-        n_candidates=len(candidates), grid_name=DEFAULT_GRID_NAME,
+        report_path, info, selection,
+        n_candidates=len(candidates), grid_name=grid_path.name,
     )
 
     print(f"\n完成，用时 {time.monotonic() - started:.1f}s（未重跑姿态估计）", file=sys.stderr)
     print(f"  九宫格   {grid_path}", file=sys.stderr)
     if compare_path is not None:
         print(f"  对照图   {compare_path}", file=sys.stderr)
-    print(f"  复盘     {args.out / 'report.md'}", file=sys.stderr)
+    print(f"  复盘     {report_path}", file=sys.stderr)
     print(f"  分数     {scores}", file=sys.stderr)
     return 0
 
