@@ -15,6 +15,7 @@ from figures import (
     TREE_LEFT,
     WARRIOR_II_RIGHT,
     figure,
+    mirrored,
 )
 
 from yoga_coach import POSES, evaluate, get_pose, rank_poses
@@ -197,6 +198,39 @@ class TestPlank:
         }
         result = evaluate(figure(creeping), get_pose("plank"))
         assert "shoulder_over_wrist" in cue_keys(result)
+
+    def head(self, dy):
+        return figure(
+            {
+                **PLANK_SIDE,
+                "left_ear": (0.265, 0.500 + dy),
+                "right_ear": (0.262, 0.504 + dy),
+            }
+        )
+
+    def test_a_neutral_neck_passes(self):
+        assert "neck_neutral" not in cue_keys(evaluate(self.head(0.0), get_pose("plank")))
+
+    def test_head_lifted_and_chin_tucked_get_opposite_advice(self):
+        """Two distinct faults -- "gaze down" is useless to someone whose chin
+        is already on their chest."""
+        lifted = evaluate(self.head(-0.09), get_pose("plank"))
+        tucked = evaluate(self.head(0.09), get_pose("plank"))
+        assert "neck_neutral" in cue_keys(lifted)
+        assert "neck_neutral" in cue_keys(tucked)
+        up = next(c.advice() for c in lifted.corrections(99) if c.check.key == "neck_neutral")
+        down = next(c.advice() for c in tucked.corrections(99) if c.check.key == "neck_neutral")
+        assert "抬头" in up.zh
+        assert "下巴" in down.zh
+        assert up.zh != down.zh
+
+    def test_the_neck_cue_survives_the_mirror(self):
+        lifted = {**PLANK_SIDE, "left_ear": (0.265, 0.410), "right_ear": (0.262, 0.414)}
+        straight = evaluate(figure(lifted), get_pose("plank"))
+        flipped = evaluate(figure(mirrored(lifted)), get_pose("plank"))
+        assert {c.advice().zh for c in straight.corrections(99)} == {
+            c.advice().zh for c in flipped.corrections(99)
+        }
 
     def test_a_standing_body_is_not_a_perfect_plank(self):
         # Standing is geometrically a straight shoulder-hip-ankle line; only
@@ -420,3 +454,63 @@ class TestDownDogHeels:
             figure(DOWN_DOG_HEELS_UP, hidden=FAR_SIDE_OCCLUDED), get_pose("downdog")
         )
         assert "heel_down" in cue_keys(result)
+
+
+class TestMirrorInvariance:
+    """Turning round in front of the camera must not change the advice.
+
+    A signed measurement taken relative to the direction a body segment
+    points reverses when the body does.  Plank told someone facing the other
+    way to lift their hips when they needed to lower them -- advice that is
+    not merely useless but backwards.  This runs every figure both ways.
+    """
+
+    ALL = {
+        "mountain": STANDING,
+        "warrior2": WARRIOR_II_RIGHT,
+        "plank": PLANK_SIDE,
+        "tree": TREE_LEFT,
+        "downdog": DOWN_DOG_SIDE,
+        "downdog_heels_up": DOWN_DOG_HEELS_UP,
+    }
+
+    #: Deliberately broken versions, because a correct pose has no advice to
+    #: get backwards.
+    BROKEN = {
+        "plank": [
+            {"left_hip": (0.550, 0.640), "right_hip": (0.553, 0.644)},
+            {"left_hip": (0.550, 0.430), "right_hip": (0.553, 0.434)},
+        ],
+        "downdog": [
+            {"left_hip": (0.44, 0.50), "right_hip": (0.443, 0.504)},
+        ],
+        "warrior2": [
+            {"right_knee": (0.760, 0.580)},
+            {"left_knee": (0.300, 0.760)},
+        ],
+    }
+
+    @pytest.mark.parametrize("name", sorted(ALL))
+    def test_scores_the_same_either_way(self, name):
+        key = name.split("_")[0] if name.startswith("downdog") else name
+        base = self.ALL[name]
+        straight = evaluate(figure(base), get_pose(key))
+        flipped = evaluate(figure(mirrored(base)), get_pose(key))
+        assert flipped.score == pytest.approx(straight.score, abs=0.5)
+
+    @pytest.mark.parametrize("key", sorted(BROKEN))
+    def test_the_same_fault_gets_the_same_words_either_way(self, key):
+        base = {"plank": PLANK_SIDE, "downdog": DOWN_DOG_SIDE, "warrior2": WARRIOR_II_RIGHT}[key]
+        for fault in self.BROKEN[key]:
+            broken = {**base, **fault}
+            straight = evaluate(figure(broken), get_pose(key))
+            flipped = evaluate(figure(mirrored(broken)), get_pose(key))
+            said = {c.advice().zh for c in straight.corrections(99)}
+            said_flipped = {c.advice().zh for c in flipped.corrections(99)}
+            assert said == said_flipped, f"{key} {fault}: {said} vs {said_flipped}"
+            assert said, "这个骨架本来就该有建议，否则测不到反向问题"
+
+    def test_auto_detection_is_unaffected(self):
+        for name, base in self.ALL.items():
+            key = name.split("_")[0] if name.startswith("downdog") else name
+            assert rank_poses(figure(mirrored(base)))[0].pose.key == key, name

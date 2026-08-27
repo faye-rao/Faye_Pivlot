@@ -563,6 +563,27 @@ PLANK = PoseSpec(
             focus=("{s}_hip",),
         ),
         Check(
+            key="neck_neutral",
+            label=Text("颈部延续脊柱", "Neck follows the spine"),
+            # Offset of the ear from the hip-through-shoulder line: positive
+            # when the head lifts to look forward, negative when the chin
+            # drops towards the chest.  Two distinct faults, so two cues.
+            metric=m.line_offset("{s}_hip", "{s}_ear", "{s}_shoulder"),
+            low=-0.20,
+            high=0.20,
+            falloff=0.30,
+            weight=0.8,
+            when_low=Text(
+                "下巴别压向胸口，后颈保持长",
+                "Stop tucking the chin -- keep the back of the neck long",
+            ),
+            when_high=Text(
+                "别抬头看前方，目光落在双手之间的地面",
+                "Stop lifting the head -- gaze down between your hands",
+            ),
+            focus=("{s}_ear",),
+        ),
+        Check(
             key="shoulder_over_wrist",
             label=Text("肩在腕正上方", "Shoulder over wrist"),
             metric=m.horizontal_gap("{s}_shoulder", "{s}_wrist"),

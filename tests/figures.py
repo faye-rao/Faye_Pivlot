@@ -74,6 +74,23 @@ def figure(
     return Skeleton(points=points)
 
 
+def mirrored(base: dict[str, tuple[float, float]]) -> dict[str, tuple[float, float]]:
+    """The same posture facing the other way in the frame.
+
+    Flips x and swaps the left/right labels, which is exactly what the
+    detector reports when the practitioner turns round.  Nothing about the
+    advice should change -- see ``TestMirrorInvariance``.
+    """
+    out: dict[str, tuple[float, float]] = {}
+    for name, (x, y) in base.items():
+        if name.startswith("left_"):
+            name = "right_" + name[len("left_") :]
+        elif name.startswith("right_"):
+            name = "left_" + name[len("right_") :]
+        out[name] = (1.0 - x, y)
+    return out
+
+
 def as_landmark_list(skeleton: Skeleton) -> list[Point]:
     """Flatten a skeleton back into MediaPipe's fixed-order list."""
     return [
