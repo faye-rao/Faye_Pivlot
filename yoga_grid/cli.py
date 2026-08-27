@@ -15,6 +15,7 @@ import cv2
 
 from . import compat, report
 from .cluster import cluster_candidates
+from .explain import explain
 from .extract import extract, iter_frames_at
 from .grid import GridStyle, build_grid, find_cjk_font
 from .model import resolve_model
@@ -114,6 +115,14 @@ def build_parser() -> argparse.ArgumentParser:
     grid.add_argument("out", type=Path, help="上次运行的输出目录（含 scores.json）")
     grid.add_argument("--video", type=Path, default=None, help="视频路径（默认取 scores.json 里记录的）")
     _add_grid_options(grid)
+
+    why = sub.add_parser("explain", help="解释某一帧为什么入选或落选")
+    why.add_argument("out", type=Path, help="上次运行的输出目录（含 scores.json）")
+    why.add_argument(
+        "--at", type=float, default=None, metavar="秒",
+        help="要追查的那一帧的时间戳，例如候选文件名 0129.25s_... 就传 129.25",
+    )
+    why.add_argument("--all", action="store_true", help="列出全部体式簇，不截断")
 
     return parser
 
@@ -316,15 +325,26 @@ def cmd_grid(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_explain(args: argparse.Namespace) -> int:
+    scores = args.out / "scores.json"
+    if not scores.is_file():
+        print(f"找不到 {scores}", file=sys.stderr)
+        return 2
+    print(explain(scores, focus=args.at, max_clusters=0 if args.all else 18))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     compat.configure_console()
     argv = list(sys.argv[1:] if argv is None else argv)
     # 让 `python -m yoga_grid 视频.mp4` 免写 run 子命令。
-    if argv and argv[0] not in {"run", "grid", "-h", "--help"}:
+    if argv and argv[0] not in {"run", "grid", "explain", "-h", "--help"}:
         argv.insert(0, "run")
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "explain":
+        return cmd_explain(args)
     if args.command == "grid":
         return cmd_grid(args)
     if args.command == "run":

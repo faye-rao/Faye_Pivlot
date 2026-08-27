@@ -93,18 +93,20 @@ def dump_json(
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def load_picks(path: Path) -> tuple[Path, list[Candidate]]:
-    """从 scores.json 读回被选中的帧，供 ``grid`` 子命令重拼。
+def load_candidates(
+    path: Path, selected_only: bool = False
+) -> tuple[Path, list[Candidate], dict[str, Any]]:
+    """从 scores.json 读回候选帧。
 
-    只重建拼图需要的字段（帧号、外框、时间、体式名）。关键点不需要 ——
-    裁图和标签都不用它。
+    只重建下游真正要用的字段（帧号、外框、时间、体式名、各项分数）。关键点
+    不重建 —— 裁图、标签和选帧解释都不需要它。
     """
     payload = json.loads(path.read_text(encoding="utf-8"))
     video_path = Path(payload["video"]["path"])
 
     picks: list[Candidate] = []
     for entry in payload["candidates"]:
-        if not entry.get("selected"):
+        if selected_only and not entry.get("selected"):
             continue
         pose_data = entry.get("pose")
         pose = (
@@ -140,12 +142,18 @@ def load_picks(path: Path) -> tuple[Path, list[Candidate]]:
                 pose=pose,
                 cluster=entry["cluster"],
                 alignment=entry.get("alignment"),
-                selected=True,
+                selected=bool(entry.get("selected")),
                 grid_slot=entry.get("grid_slot"),
                 note=entry.get("note", ""),
             )
         )
 
+    return video_path, picks, payload
+
+
+def load_picks(path: Path) -> tuple[Path, list[Candidate]]:
+    """从 scores.json 读回**被选中的**帧，按格号排序，供 ``grid`` 子命令重拼。"""
+    video_path, picks, _ = load_candidates(path, selected_only=True)
     picks.sort(key=lambda c: (c.grid_slot if c.grid_slot is not None else 0))
     return video_path, picks
 

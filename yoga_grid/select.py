@@ -54,6 +54,30 @@ def _assign_alignment(group: list[Candidate]) -> str | None:
     return dominant
 
 
+def total_hold(group: list[Candidate]) -> float:
+    """簇的累计保持时长。
+
+    同一簇的帧可能来自多个保持段（体式重复做了几轮），按段去重再累计，
+    否则同一次保持里留下的两帧会把时长算成两倍。
+    """
+    return sum({c.segment_id: c.segment_duration for c in group}.values())
+
+
+def cluster_rank_score(
+    representative: Candidate, group: list[Candidate], hold_saturation: float = 6.0
+) -> float:
+    """簇间排序分：决定哪些体式进九宫格。
+
+    刻意只用画质分和保持时长，不用正位分 —— 不同体式的模板宽严不一，
+    横向比较会系统性偏袒容差松的体式。
+
+    独立成函数供 ``explain`` 复用，免得诊断输出和真实选帧逻辑各算一套。
+    """
+    return 0.55 * representative.quality + 0.45 * float(
+        np.clip(total_hold(group) / hold_saturation, 0.0, 1.0)
+    )
+
+
 def _merge_by_pose(
     groups: dict[int, list[Candidate]], dominant: dict[int, str | None]
 ) -> dict[int, list[Candidate]]:
@@ -104,15 +128,9 @@ def select(
     ranked: list[tuple[float, Candidate]] = []
     for group in groups.values():
         representative = max(group, key=lambda c: c.rank_score())
-
-        # 同一簇的帧可能来自多个保持段（体式重复做了几轮），按段去重再累计。
-        total_hold = sum(
-            {c.segment_id: c.segment_duration for c in group}.values()
+        ranked.append(
+            (cluster_rank_score(representative, group, hold_saturation), representative)
         )
-        cluster_score = 0.55 * representative.quality + 0.45 * float(
-            np.clip(total_hold / hold_saturation, 0.0, 1.0)
-        )
-        ranked.append((cluster_score, representative))
 
     ranked.sort(key=lambda pair: pair[0], reverse=True)
     picks = [cand for _, cand in ranked[:count]]
