@@ -634,12 +634,15 @@ UP_DOG = PoseSpec(
 )
 
 # --------------------------------------------------------------------------
-# 平板支撑 Plank -- side = the side facing the camera
+# 直臂斜板 High Plank -- side = the side facing the camera
 # --------------------------------------------------------------------------
 
 PLANK = PoseSpec(
     key="plank",
-    name=Text("平板支撑", "Plank"),
+    # 用户的三分法（2026-08）：前臂着地叫「前臂平板」（简称平板）、
+    # 手臂伸直叫「直臂斜板」（简称斜板）、身体侧转叫「侧板式」（简称侧板）。
+    # 这里是 Phalakasana，直臂那一种。yoga_grid 的 plank 模板同名同义。
+    name=Text("直臂斜板", "High Plank"),
     sanskrit="Phalakasana",
     view=Text("摄像头放在身体侧面，与地面同高", "Camera to your side, at floor height"),
     cue=Text("核心收紧，脚跟向后蹬", "Draw the belly in, press the heels back"),
