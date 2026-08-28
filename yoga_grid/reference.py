@@ -23,8 +23,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:  # PIL is imported lazily inside the render functions,
+    from PIL import Image  # so this module imports fine without it.
 
 from . import landmarks as L
 

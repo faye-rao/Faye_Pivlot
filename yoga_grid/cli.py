@@ -113,6 +113,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--exclude", default="",
         help="排除的体式 key，逗号分隔，例如 mountain",
     )
+    run.add_argument(
+        "--skip-unrecognized", action="store_true",
+        help="识别不出体式的帧不参与九宫格竞争（默认参与，标签显示「未识别体式」）",
+    )
     run.add_argument("--order", choices=("time", "score"), default="time", help="九宫格排列顺序")
     run.add_argument("--no-candidates", action="store_true", help="不导出候选帧缩略图")
     run.add_argument(
@@ -152,6 +156,8 @@ def build_parser() -> argparse.ArgumentParser:
     again.add_argument("--no-merge-same-pose", action="store_true",
                        help="不合并判为同一体式的多个簇")
     again.add_argument("--exclude", default="", help="排除的体式 key，逗号分隔")
+    again.add_argument("--skip-unrecognized", action="store_true",
+                       help="识别不出体式的帧不参与九宫格竞争")
     again.add_argument("--order", choices=("time", "score"), default="time",
                        help="九宫格排列顺序")
     again.add_argument("--no-face-mask", action="store_true", help="不给露出的人脸盖卡通面具")
@@ -172,6 +178,25 @@ def build_parser() -> argparse.ArgumentParser:
     why.add_argument("--all", action="store_true", help="列出全部体式簇，不截断")
 
     return parser
+
+
+def _parse_exclude(raw: str) -> frozenset[str]:
+    """把 ``--exclude`` 的逗号分隔串解析成 key 集合，**拼错就报错**。
+
+    静默忽略无效 key 曾经白费一整次运行：`--exclude unknown` 意图是「别放
+    未识别的帧」，但 unknown 不是体式 key，于是什么也没发生，而输出看起来
+    像是开关没用。想要那个效果的是 ``--skip-unrecognized``。
+    """
+    keys = frozenset(k.strip() for k in raw.split(",") if k.strip())
+    known = {t.key for t in TEMPLATES}
+    unknown = sorted(keys - known)
+    if unknown:
+        raise SystemExit(
+            f"--exclude 里有无效的体式 key：{', '.join(unknown)}\n"
+            f"可用的 key：{', '.join(sorted(known))}\n"
+            f"（想排除识别不出的帧请用 --skip-unrecognized）"
+        )
+    return keys
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -241,7 +266,7 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
         return 1
 
     print("[3/6] 候选帧打分…", file=sys.stderr)
-    exclude = frozenset(k.strip() for k in args.exclude.split(",") if k.strip())
+    exclude = _parse_exclude(args.exclude)
     candidates = build_candidates(
         frames, segments, vel, threshold,
         per_segment=args.per_segment,
@@ -264,6 +289,7 @@ def _run_pipeline(args: argparse.Namespace, video: Path, out_dir: Path) -> int:
         count=args.count,
         order=args.order,
         merge_same_pose=not args.no_merge_same_pose,
+        skip_unrecognized=args.skip_unrecognized,
     )
     print(f"      合并同体式后 {selection.n_clusters} 个体式", file=sys.stderr)
     if selection.n_filled:
@@ -415,6 +441,10 @@ def cmd_grid(args: argparse.Namespace) -> int:
 
 
 def cmd_rescore(args: argparse.Namespace) -> int:
+    # 先校验参数再碰磁盘：拼错一个体式 key 应该立刻报出来，而不是等
+    # 读完 scores.json、跑完识别，最后输出一张看不出开关没生效的图。
+    exclude = _parse_exclude(args.exclude)
+
     scores = args.out / "scores.json"
     if not scores.is_file():
         print(f"找不到 {scores}", file=sys.stderr)
@@ -434,7 +464,6 @@ def cmd_rescore(args: argparse.Namespace) -> int:
         return 1
 
     started = time.monotonic()
-    exclude = frozenset(k.strip() for k in args.exclude.split(",") if k.strip())
 
     print(f"[1/4] 用当前模板重新识别 {len(candidates)} 个候选…", file=sys.stderr)
     recognized = rescore.rematch(candidates, exclude)
@@ -447,6 +476,7 @@ def cmd_rescore(args: argparse.Namespace) -> int:
     selection = select(
         candidates, count=args.count, order=args.order,
         merge_same_pose=not args.no_merge_same_pose,
+        skip_unrecognized=args.skip_unrecognized,
     )
     print(
         f"      聚出 {n_clusters} 个体式，合并同体式后 {selection.n_clusters} 个，"

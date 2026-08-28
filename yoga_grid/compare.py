@@ -54,7 +54,6 @@ def build_comparison(
     row_h = round(width * 0.20)
     panel = row_h
     text_x = margin + panel * 2 + gap * 2
-    text_w = width - text_x - margin
 
     font_row = _load_font(font_path, max(17, round(row_h * 0.105)))
     font_body = _load_font(font_path, max(14, round(row_h * 0.078)))

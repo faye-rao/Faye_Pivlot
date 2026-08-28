@@ -58,6 +58,32 @@ class Check:
 
 
 @dataclass(frozen=True)
+class Gate:
+    """体式的定义性特征：不满足就不是这个体式，其余项做得再标准也不算。
+
+    和 ``Check`` 的区别不是严格程度，而是**作用方式**：Check 按权重扣分，
+    一项归零最多损失它那份权重；Gate 是乘在总分上的系数，归零则整个模板
+    归零。什么该做成 Gate：这个体式区别于「其它体式恰好也满足的那些检查」
+    的那一条。
+
+    实际吃过的教训（见 README「模板互相误判」）：蹲姿两条腿都折着约 64°，
+    鸽子式六项里只有「后腿向后伸直」正确地判 0 分，另外五项被低髋位满足，
+    于是蹲姿以 0.77 被认成鸽子式。唯一正确否决的那一项被投票淹没了。
+
+    ``spine_up`` 是同一机制的先例，只是它每个模板都有、所以单独成字段。
+    和 ``_orientation_factor`` 一样做成软门槛而不是硬布尔：MediaPipe 在
+    肢体交叠时会抖，硬切会让临界帧忽有忽无。
+    """
+
+    label: str
+    measure: Callable[[PoseView], float]
+    lo: float
+    hi: float
+    #: 超出区间多远算完全不是这个体式。单位与 measure 相同。
+    slack: float
+
+
+@dataclass(frozen=True)
 class Template:
     key: str
     zh: str
@@ -68,6 +94,8 @@ class Template:
     # 人倒过来了就不是战士二式，膝角再标准也不算。
     spine_up: tuple[float, float]
     min_score: float = 0.55
+    #: 除朝向之外的定义性门槛。见 :class:`Gate`。
+    gates: tuple[Gate, ...] = ()
 
 
 @dataclass
@@ -89,6 +117,7 @@ class PoseMatch:
     score: float
     checks: list[CheckResult] = field(default_factory=list)
     orientation: float = 1.0  # 躯干朝向门槛的系数，已乘进 score
+    gate: float = 1.0  # 其它定义性门槛的系数之积，也已乘进 score
 
     @property
     def label(self) -> str:
@@ -403,6 +432,11 @@ TEMPLATES: tuple[Template, ...] = (
             Check("前腿贴地伸展", lambda v: v.horiz("s_hip", "s_ankle"), 15, 20, 35, 1.5),
         ),
         min_score=0.64,
+        # 同鸽子式：伸直的那条腿是半神猴式的定义。真实误判是躯干前倾的
+        # 蹲姿——朝向门槛拦不住它，因为蹲姿确实可以前倾。
+        gates=(
+            Gate("前腿必须伸直", lambda v: v.ang("s_hip", "s_knee", "s_ankle"), 135, 190, 35),
+        ),
     ),
     Template(
         key="pigeon",
@@ -420,6 +454,12 @@ TEMPLATES: tuple[Template, ...] = (
             Check("躯干直立", _spine_up, 0.85, 0.25, 0.40, 1.5, ""),
         ),
         min_score=0.64,
+        # 后腿伸直是鸽子式的定义，不是打分项之一。区间比同名 Check
+        # （172±18）宽得多：门槛只回答「是不是这个体式」，好不好交给 Check。
+        # 标准骨架读 180，蹲姿两腿都约 64，落到区间外 71 度、直接归零。
+        gates=(
+            Gate("后腿必须伸直", lambda v: v.ang("o_hip", "o_knee", "o_ankle"), 135, 190, 35),
+        ),
     ),
     Template(
         key="chaturanga",
@@ -603,14 +643,18 @@ def _score_template(norm: np.ndarray, template: Template) -> PoseMatch | None:
         orientation = _orientation_factor(
             _spine_up(view), template.spine_up[0], template.spine_up[1]
         )
+        gate = 1.0
+        for g in template.gates:
+            gate *= _orientation_factor(g.measure(view), g.lo, g.hi, g.slack)
         match = PoseMatch(
             key=template.key,
             zh=template.zh,
             en=template.en,
             side=side,
-            score=(total_score / total_weight) * orientation,
+            score=(total_score / total_weight) * orientation * gate,
             checks=results,
             orientation=orientation,
+            gate=gate,
         )
         if best is None or match.score > best.score:
             best = match

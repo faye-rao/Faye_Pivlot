@@ -2,13 +2,26 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+*.egg-info/
+build/
+dist/
 .pytest_cache/
 
-# 运行产物
-out/
+# Downloaded MediaPipe model bundles, if the cache is pointed at the repo.
 *.task
+*.task.part
 
-# 视频与图片素材不进仓库
+# yoga_grid run output
+out/
+
+# Scratch git worktrees created for background agents. Transient tooling
+# state, not project content -- but `.claude/` itself is not ignored, since
+# project config and skills under it are meant to be committed.
+.claude/worktrees/
+
+# Video material: practice recordings are large and regenerable. Images are
+# deliberately NOT listed -- the patterns below are video only, so any image
+# added to the repo will be committed rather than silently skipped.
 *.mp4
 *.mov
 *.m4v

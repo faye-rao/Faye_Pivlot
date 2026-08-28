@@ -113,6 +113,7 @@ def select(
     hold_saturation: float = 6.0,
     fill_min_gap: float = 8.0,
     merge_same_pose: bool = True,
+    skip_unrecognized: bool = False,
 ) -> SelectionReport:
     if not candidates:
         return SelectionReport([], 0, 0, count)
@@ -124,6 +125,20 @@ def select(
     dominant = {cid: _assign_alignment(group) for cid, group in groups.items()}
     if merge_same_pose:
         groups = _merge_by_pose(dict(groups), dominant)
+
+    # 未识别的簇默认参与竞争：练了模板之外的体式不该被丢掉。但排除某个体式
+    # key 只是让模板不再认领这些帧，帧本身照旧靠画质和保持时长抢格子 ——
+    # 想让它们彻底不出现，只有这个开关。
+    if skip_unrecognized:
+        kept = {
+            cid: group
+            for cid, group in groups.items()
+            if any(c.pose is not None for c in group)
+        }
+        if kept:
+            groups = kept
+            surviving = {id(c) for group in groups.values() for c in group}
+            candidates = [c for c in candidates if id(c) in surviving]
 
     ranked: list[tuple[float, Candidate]] = []
     for group in groups.values():

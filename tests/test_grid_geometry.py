@@ -3,7 +3,7 @@
 用手工搭的骨架，不依赖视频或模型文件 —— 这部分逻辑是整条流水线的判断依据，
 出错会安静地选错帧，所以值得单独钉住。
 
-    python -m pytest tests/ -q      或      python tests/test_geometry.py
+    python -m pytest tests/ -q      或      python tests/test_grid_geometry.py
 """
 
 from __future__ import annotations
