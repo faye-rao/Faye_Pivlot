@@ -54,6 +54,74 @@ def _assign_alignment(group: list[Candidate]) -> str | None:
     return dominant
 
 
+def _split_by_pose(groups: dict[int, list[Candidate]]) -> dict[int, list[Candidate]]:
+    """把一个骨架簇按**逐帧识别结果**拆开，然后才投票。
+
+    骨架距离聚类只保证「这些帧的姿势彼此接近」，不保证它们是同一个体式。
+    俯卧类体式在 ``cluster_dist=0.35`` 下尤其糊：真实视频里 331 个候选聚出
+    13 簇，其中**一簇 159 帧横跨 1.7~31.9 分钟、含 6 个体式**（平板式 115、
+    四柱支撑式 22、半神猴式 9、上犬式 6、反板式 4、婴儿式 3）。
+
+    不拆的后果有两重，第二重更糟：
+
+    * 这一簇只拿到九宫格里的**一个**格子，另外五个体式连竞争的机会都没有；
+    * ``_assign_alignment`` 会把主导体式强加给簇里每一帧，于是四柱支撑式的
+      帧被当成平板式重新打分，report.md 写出「平板式，身体成一直线 118°，
+      目标 178±10」—— 一条**针对错误体式**的纠正建议。认不出来只是没帮上忙，
+      指着四柱式说你的平板不直是在帮倒忙。
+
+    拆的判据是「有没有**确信的**分歧」：按识别出体式的帧分组。识别不出的帧
+    在明显是少数时并入最大的那一份 —— 擦边没过门槛的帧和主导体式几何上确实
+    接近，跟着它拿一个偏低的正位分正是 ``_assign_alignment`` 想要的效果
+    （见那里的注释），单独拆出来只会凭空多一个「未识别」簇去抢格子。
+
+    但「少数」这个前提要当真。一簇 6 帧站姿里 2 帧过了山式门槛、4 帧没过
+    （越站越松，较屈的膝从 160° 掉到 146°），无条件并入就是把少数派的标签
+    盖到多数派头上 —— 和这个函数要修的那个错误一模一样，只是低了一层。
+    真实视频里的后果是九宫格那一格写着「山式 0.63」，而用户的原话是
+    「随意站着手臂没有下垂不是山式」。未识别的帧多于最大的那一份时，
+    它们自己成一簇，标签就老实写「未识别体式」。
+    """
+    out: dict[int, list[Candidate]] = {}
+    next_id = max(groups, default=-1) + 1
+
+    for cluster_id in sorted(groups):
+        group = groups[cluster_id]
+        by_key: dict[str | None, list[Candidate]] = {}
+        for cand in group:
+            by_key.setdefault(cand.pose.key if cand.pose else None, []).append(cand)
+
+        recognized = {k: v for k, v in by_key.items() if k is not None}
+        unknown = by_key.get(None, [])
+        if not recognized:
+            out[cluster_id] = group  # 整簇未识别：只是「未知」，不代表彼此不同
+            continue
+
+        largest = max(recognized, key=lambda k: len(recognized[k]))
+        if len(unknown) <= len(recognized[largest]):
+            recognized[largest].extend(unknown)
+            unknown = []
+
+        if len(recognized) == 1 and not unknown:
+            out[cluster_id] = group
+            continue
+
+        # 最大的那一份留用原簇号，其余各分一个新号。
+        out[cluster_id] = recognized.pop(largest)
+        for key in sorted(recognized):
+            out[next_id] = recognized[key]
+            next_id += 1
+        if unknown:
+            out[next_id] = unknown
+            next_id += 1
+
+    # 让 scores.json 里的 cluster 反映拆分后的分组（关掉合并时也要正确）。
+    for cluster_id, group in out.items():
+        for cand in group:
+            cand.cluster = cluster_id
+    return out
+
+
 def total_hold(group: list[Candidate]) -> float:
     """簇的累计保持时长。
 
@@ -122,6 +190,9 @@ def select(
     for cand in candidates:
         groups[cand.cluster].append(cand)
 
+    # 先按逐帧识别拆，再投票，最后合。顺序很要紧：投票必须在拆完之后，
+    # 否则一个混着 6 个体式的簇会把多数派的标签盖到所有帧上（见 _split_by_pose）。
+    groups = _split_by_pose(dict(groups))
     dominant = {cid: _assign_alignment(group) for cid, group in groups.items()}
     if merge_same_pose:
         groups = _merge_by_pose(dict(groups), dominant)

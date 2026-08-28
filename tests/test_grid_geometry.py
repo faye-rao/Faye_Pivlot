@@ -410,3 +410,208 @@ def _run_all() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(_run_all())
+
+
+# --------------------------------------------------------------------------
+# 簇内混了多个体式时的拆分。真实视频里 331 个候选聚出 13 簇，其中一簇 159 帧
+# 横跨 6 个体式；不拆的话主导体式的标签会盖到全簇，report.md 就会拿平板式的
+# 目标值去点评一个四柱支撑式。
+# --------------------------------------------------------------------------
+
+
+def _fake_candidate(t: float, cluster: int, key: str | None):
+    """只填 _split_by_pose 会读到的字段。
+
+    刻意不造真骨架：这里测的是分组逻辑，不是识别逻辑。识别逻辑已经被
+    test_grid_templates.py 那一整张网钉住了，在这里再搭一遍骨架只会让
+    这个测试在容差变动时莫名其妙地红。
+    """
+    from yoga_grid.poses import PoseMatch
+    from yoga_grid.score import Candidate
+    from yoga_grid.extract import FramePose
+
+    frame = FramePose(
+        idx=-1, frame_no=int(t * 30), t=t, lm=None, norm=None,
+        bbox=(0.0, 0.0, 1.0, 1.0), visibility=0.9, sharpness=0.0,
+    )
+    pose = (
+        PoseMatch(key=key, zh=key, en=key, side="left", score=0.8)
+        if key is not None
+        else None
+    )
+    return Candidate(
+        frame=frame, segment_id=int(t), segment_duration=2.0, velocity=0.0,
+        components={}, quality=0.8, pose=pose, cluster=cluster,
+    )
+
+
+def test_split_separates_confidently_different_poses():
+    from yoga_grid.select import _split_by_pose
+
+    group = [
+        _fake_candidate(1.0, 0, "plank"),
+        _fake_candidate(2.0, 0, "plank"),
+        _fake_candidate(3.0, 0, "plank"),
+        _fake_candidate(4.0, 0, "chaturanga"),
+        _fake_candidate(5.0, 0, "chaturanga"),
+        _fake_candidate(6.0, 0, "child"),
+    ]
+    out = _split_by_pose({0: group})
+
+    keys = {
+        frozenset(c.pose.key for c in members) for members in out.values()
+    }
+    assert keys == {frozenset({"plank"}), frozenset({"chaturanga"}), frozenset({"child"})}, (
+        f"三个体式应该拆成三组，实际 {keys}"
+    )
+    # 最大的一份留用原簇号，其余各分新号，且 cluster 字段要跟着更新。
+    for cluster_id, members in out.items():
+        for cand in members:
+            assert cand.cluster == cluster_id, "cluster 字段没有跟上拆分结果"
+
+
+def test_split_absorbs_unrecognized_frames_into_the_largest_share():
+    """认不出来的帧不单独成簇 —— 它们是擦边没过门槛，不是「另一个体式」。
+
+    单独拆出去会凭空多一个「未识别」簇去抢九宫格的格子，而跟着主导体式
+    拿一个偏低的正位分，正是 _assign_alignment 想要的效果。
+    """
+    from yoga_grid.select import _split_by_pose
+
+    group = [
+        _fake_candidate(1.0, 0, "plank"),
+        _fake_candidate(2.0, 0, "plank"),
+        _fake_candidate(3.0, 0, "chaturanga"),
+        _fake_candidate(4.0, 0, None),
+        _fake_candidate(5.0, 0, None),
+    ]
+    out = _split_by_pose({0: group})
+
+    assert len(out) == 2, f"应该拆成 2 组（plank+未识别 / chaturanga），实际 {len(out)}"
+    holding_unknown = [
+        members for members in out.values() if any(c.pose is None for c in members)
+    ]
+    assert len(holding_unknown) == 1
+    assert {c.pose.key for c in holding_unknown[0] if c.pose} == {"plank"}, (
+        "未识别的帧应该并进最大的那一份（plank），而不是自己成簇"
+    )
+
+
+def test_split_leaves_a_homogeneous_cluster_alone():
+    """没有分歧就不动 —— 包括整簇都认不出来的情况。"""
+    from yoga_grid.select import _split_by_pose
+
+    same = [_fake_candidate(float(i), 0, "downdog") for i in range(4)]
+    assert list(_split_by_pose({0: same})) == [0]
+
+    none_at_all = [_fake_candidate(float(i), 7, None) for i in range(3)]
+    out = _split_by_pose({7: none_at_all})
+    assert list(out) == [7], "整簇未识别不该被拆开 —— 它们只是「未知」，不代表彼此不同"
+
+
+def test_pose_dict_records_the_gate_factor():
+    """gate 必须落盘。
+
+    它和 orientation 一样是乘在总分上的系数。少了它，一个被定义性门槛压到
+    0.2 的分数在 scores.json 里和「各项都做得差」长得一模一样 —— 而前者说明
+    这一帧根本不是这个体式，后者才是纠正建议。
+    """
+    from yoga_grid.poses import PoseMatch
+    from yoga_grid.report import _pose_dict
+
+    payload = _pose_dict(
+        PoseMatch(key="pigeon", zh="鸽子式", en="Pigeon", side="left",
+                  score=0.2, orientation=1.0, gate=0.25)
+    )
+    assert payload["gate"] == 0.25, f"gate 没有写进 scores.json：{payload}"
+
+
+def test_split_does_not_let_a_minority_label_the_majority():
+    """未识别的帧多于最大的那一份时，它们自己成簇。
+
+    真实案例：一簇 6 帧站姿，2 帧过了山式门槛、4 帧没过（越站越松）。
+    无条件把未识别的并入最大份，就是把少数派的标签盖到多数派头上 ——
+    正是 _split_by_pose 本身要修的那个错误，只是低了一层。
+    """
+    from yoga_grid.select import _split_by_pose
+
+    group = [
+        _fake_candidate(1.0, 0, "mountain"),
+        _fake_candidate(2.0, 0, "mountain"),
+        _fake_candidate(3.0, 0, None),
+        _fake_candidate(4.0, 0, None),
+        _fake_candidate(5.0, 0, None),
+        _fake_candidate(6.0, 0, None),
+    ]
+    out = _split_by_pose({0: group})
+
+    assert len(out) == 2, f"应该拆成「山式」和「未识别」两簇，实际 {len(out)}"
+    shares = [
+        {c.pose.key if c.pose else None for c in members} for members in out.values()
+    ]
+    assert {None} in shares, f"未识别的 4 帧应该自己成一簇，实际分组 {shares}"
+    assert {"mountain"} in shares, f"山式那 2 帧应该单独留下，实际分组 {shares}"
+
+
+def test_calibrate_reads_a_scores_file_and_reports(tmp_path, capsys):
+    """tools/calibrate.py 的冒烟测试。
+
+    这个工具的价值全在「它读到的是不是真的骨架」上。所以这里造一份最小的
+    scores.json（用标准山式骨架当关键点），断言它能还原出骨架、把那一帧归到
+    山式的样本里、并打印出目标值 —— 而不只是断言进程没崩。
+
+    关键点必须按 33×3 的**原始**格式写（归一化 x、y 加置信度），和真实
+    scores.json 一致：还原时要先乘回画面宽高，直接拿归一化坐标算角度会被
+    画面长宽比拉歪。
+    """
+    import json
+    import importlib.util
+
+    from yoga_grid.reference import mountain
+
+    pts = mountain()
+    # 像素坐标 -> 归一化：塞进 1920×1080 的画面中央。
+    lm = [
+        [float(x) / 1920.0 + 0.5, float(y) / 1080.0 + 0.5, 0.99] for x, y in pts
+    ]
+    payload = {
+        "video": {"path": "fake.mp4", "width": 1920, "height": 1080, "fps": 30.0},
+        "params": {},
+        "summary": {},
+        "candidates": [
+            {
+                "t": float(i), "frame_no": i * 30, "bbox": [0.0, 0.0, 1.0, 1.0],
+                "cluster": 0, "segment_id": 0, "segment_duration": 3.0,
+                "velocity": 0.0, "quality": 0.8, "components": {"visibility": 0.9},
+                "alignment": 1.0, "pose": None, "selected": False,
+                "grid_slot": None, "note": "", "landmarks": lm,
+            }
+            for i in range(6)
+        ],
+    }
+    scores = tmp_path / "scores.json"
+    scores.write_text(json.dumps(payload), encoding="utf-8")
+
+    root = Path(__file__).resolve().parent.parent
+    spec = importlib.util.spec_from_file_location(
+        "calibrate", root / "tools" / "calibrate.py"
+    )
+    calibrate = importlib.util.module_from_spec(spec)
+    # 先登记进 sys.modules 再 exec：模块里的 @dataclass 会去
+    # sys.modules[cls.__module__] 找模块对象，登记之前那里是 None。
+    sys.modules["calibrate"] = calibrate
+    spec.loader.exec_module(calibrate)
+
+    frames = calibrate.load(scores)
+    assert len(frames) == 6
+    assert frames[0].source == "fake", "来源标签要取视频文件名，不是目录名"
+
+    from yoga_grid.poses import TEMPLATES_BY_KEY
+
+    sample = calibrate.population(frames, TEMPLATES_BY_KEY["mountain"])
+    assert len(sample) == 6, "标准山式骨架应该全部归到山式样本里"
+    assert not calibrate.population(frames, TEMPLATES_BY_KEY["pigeon"])
+
+    assert calibrate.main([str(scores), "--key", "mountain"]) == 0
+    out = capsys.readouterr().out
+    assert "山式" in out and "双腿伸直" in out and "178±8" in out, out

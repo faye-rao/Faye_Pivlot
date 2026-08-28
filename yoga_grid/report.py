@@ -30,6 +30,11 @@ def _pose_dict(pose: PoseMatch | None) -> dict[str, Any] | None:
         "side": pose.side,
         "score": round(pose.score, 4),
         "orientation": round(pose.orientation, 4),
+        # gate 和 orientation 一样是乘在总分上的系数，必须一起存下来：
+        # 少了它，一个被定义性门槛压到 0.2 的分数在文件里看起来和「各项都
+        # 做得差」一模一样，而两者该做的事完全不同 —— 前者说明这一帧根本
+        # 不是这个体式，后者才是纠正建议。
+        "gate": round(pose.gate, 4),
         "checks": [
             {
                 "label": c.label,
@@ -295,6 +300,17 @@ def write_report(
             add("这一帧没有匹配到已知体式模板，只按画质和保持稳定性入选，没有正位评分。")
             add("")
             continue
+
+        # 门槛把分数压下来时先说这件事：否则「正位分 0.20」加一串检查项，
+        # 看图的人会以为是自己做得差，而实际结论是「这一帧不是这个体式」。
+        if cand.pose.gate < 0.999 or cand.pose.orientation < 0.999:
+            factor = cand.pose.gate * cand.pose.orientation
+            add(
+                f"正位分 {cand.pose.score:.2f}，其中定义性门槛把分数乘掉了 "
+                f"{1 - factor:.0%} —— 这一帧可能**不是**这个体式，"
+                f"下面的偏离项未必是你要改的地方。"
+            )
+            add("")
 
         weak = cand.pose.weak_checks()
         if not weak:

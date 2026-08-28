@@ -249,7 +249,160 @@ SQUAT_FOLDED = skeleton(
     **_SQUAT_LEGS,
 )
 
-NON_TEMPLATE_POSES = {"蹲姿·躯干直立": SQUAT_UPRIGHT, "蹲姿·躯干前倾": SQUAT_FOLDED}
+# --------------------------------------------------------------------------
+# 2026-08 的第二批负例：两支真实练习视频（38 分钟 + 16 分钟，共 493 个候选帧），
+# 用户逐格核对九宫格后点名的误判。每一具骨架都按**实测不变量**手搭，
+# 括号里的数值就是从那两支视频量出来的，不是想象的。
+#
+# 这一批的共同结构和蹲姿完全一样，只是换了七个体式：模板里唯一正确否决它的
+# 那一项被其余各项投票淹没。所以修法也一样 —— 给被蒙混的模板补定义性门槛。
+#
+# 补门槛有个连锁反应，这一批把它暴露得很清楚：拦住一个模板，那些帧会去找
+# 几何上次像的模板。压脚背从树式 → 未识别用了 2 轮，站立伸展从站立前屈式
+# → 金字塔式 → 下犬式 → 战士三式 → 未识别用了 4 轮。所以**这些测试断言的是
+# 「没有任何模板认领它」，而不是「某个模板拒绝了它」** —— 后者会漏掉下一站。
+# --------------------------------------------------------------------------
+
+#: 幻椅式（Utkatasana）—— 库里没有。双脚并拢（踝距实测 0.01~0.07）、双膝都屈
+#: 117~139°、站姿（踝低于髋 1.05~1.36）、双臂上举、躯干竖直。
+#: 曾被新月式认走 0.87~1.00：「前膝屈 90°」和「后膝屈曲跪地」被两条都屈的膝
+#: 同时满足，弓步却没要求双脚前后分开。
+CHAIR = skeleton(
+    nose=(-6, -130), left_ear=(-14, -124), right_ear=(2, -124),
+    left_eye=(-10, -132), right_eye=(-2, -132),
+    mouth_left=(-10, -122), mouth_right=(-2, -122),
+    left_shoulder=(-20, -100), right_shoulder=(20, -100),
+    left_elbow=(-18, -150), right_elbow=(18, -150),
+    left_wrist=(-14, -195), right_wrist=(14, -195),
+    left_hip=(-15, 0), right_hip=(15, 0),
+    left_knee=(-48, 60), right_knee=(-42, 60),
+    left_ankle=(-18, 130), right_ankle=(-12, 130),
+    left_heel=(-8, 134), right_heel=(-2, 134),
+    left_foot_index=(-46, 136), right_foot_index=(-40, 136),
+)
+
+#: 压脚背（跪坐在脚跟上、脚趾回勾）—— 库里没有。两膝都折到 21~39°、
+#: 两踝并在髋下 0.31~0.48、躯干竖直、手在胸前。
+#: 曾**把树式整簇占掉**（16 帧，0.72~0.78）：五项里只有「支撑腿伸直」判 0 分，
+#: 两膝都折着自然满足「抬起腿屈膝」，两踝并拢自然满足「抬起脚贴支撑腿」。
+TOE_SQUAT = skeleton(
+    nose=(-8, -130), left_ear=(-16, -124), right_ear=(0, -124),
+    left_eye=(-12, -132), right_eye=(-4, -132),
+    mouth_left=(-12, -122), mouth_right=(-4, -122),
+    left_shoulder=(-20, -100), right_shoulder=(20, -100),
+    left_elbow=(-35, -60), right_elbow=(35, -60),
+    left_wrist=(-8, -45), right_wrist=(8, -45),
+    left_hip=(-15, 0), right_hip=(15, 0),
+    left_knee=(-62, 25), right_knee=(-58, 25),
+    left_ankle=(-2, 30), right_ankle=(2, 30),
+    left_heel=(6, 26), right_heel=(10, 26),
+    left_foot_index=(-30, 44), right_foot_index=(-26, 44),
+)
+
+#: 四足跪姿/桌面式（Bharmanasana）—— 库里没有，而它是猫牛式、鸟狗式的起始位，
+#: 出现频率极高：一支 38 分钟视频里 46 帧。膝压在髋正下方（膝低于髋 0.87~0.98）、
+#: 膝角 67~88°、身体成一直线只有 126~146°。
+#: 曾被平板式认走 0.62~0.75，补上门槛后依次落到四柱支撑式 0.80、桥式 0.69、
+#: 婴儿式 0.62 —— 一个高频体式缺模板，会把整条俯卧支撑家族轮流污染一遍。
+TABLE_TOP = skeleton(
+    nose=(-140, 10), left_ear=(-128, 4), right_ear=(-126, 12),
+    left_eye=(-136, 6), right_eye=(-134, 14),
+    mouth_left=(-134, 18), mouth_right=(-132, 22),
+    left_shoulder=(-99, -18), right_shoulder=(-100, -2),
+    left_elbow=(-101, 32), right_elbow=(-102, 44),
+    left_wrist=(-102, 85), right_wrist=(-103, 88),
+    left_hip=(-1, -8), right_hip=(1, 8),
+    left_knee=(-4, 93), right_knee=(4, 93),
+    left_ankle=(53, 88), right_ankle=(57, 88),
+    left_heel=(62, 90), right_heel=(66, 90),
+    left_foot_index=(74, 94), right_foot_index=(78, 94),
+)
+
+#: 站立伸展/展背（半程前屈）—— 库里没有。腿直、双脚并拢，但躯干只折到
+#: 略过水平（spine_up 实测 -0.35~-0.49，满程前屈是 -0.85 上下），
+#: 头还在髋下 0.50~0.70（满程能到 0.95 以上）。
+#: 曾被站立前屈式认走 0.91（六项里只有「躯干向下倒垂」失分）。
+HALF_FOLD = skeleton(
+    nose=(-120, 55), left_ear=(-108, 46), right_ear=(-106, 54),
+    left_eye=(-116, 48), right_eye=(-114, 56),
+    mouth_left=(-114, 62), mouth_right=(-112, 66),
+    left_shoulder=(-91, 33), right_shoulder=(-91, 49),
+    left_elbow=(-66, 72), right_elbow=(-66, 78),
+    left_wrist=(-40, 110), right_wrist=(-40, 116),
+    left_hip=(-8, -8), right_hip=(8, 8),
+    left_knee=(-6, 80), right_knee=(6, 80),
+    left_ankle=(-3, 159), right_ankle=(3, 159),
+    left_heel=(-3, 164), right_heel=(3, 164),
+    left_foot_index=(-16, 170), right_foot_index=(-10, 170),
+)
+
+#: 俯卧撑起上身看手机 —— 用户原话。不是体式，但摄像机在录，它就要参与识别。
+#: 双腿都伸直贴地（168°/178°）、髋贴地（踝低于髋 0.22）、双肘折到 8°和 57°。
+#: 曾被鸽子式认走 0.83（六项里只有「前腿屈膝外旋」判 0 分），
+#: 补上鸽子式门槛后落到半神猴式 0.80、再落到上犬式 0.78。
+PRONE_PHONE = skeleton(
+    nose=(-115, -40), left_ear=(-104, -46), right_ear=(-102, -38),
+    left_eye=(-111, -44), right_eye=(-109, -36),
+    mouth_left=(-109, -32), mouth_right=(-107, -28),
+    left_shoulder=(-79, -69), right_shoulder=(-79, -53),
+    left_elbow=(-105, 26), right_elbow=(-105, 34),
+    left_wrist=(-95, -45), right_wrist=(-93, -39),
+    left_hip=(-1, -8), right_hip=(1, 8),
+    left_knee=(85, 8), right_knee=(85, 16),
+    left_ankle=(170, 18), right_ankle=(170, 26),
+    left_heel=(178, 20), right_heel=(178, 28),
+    left_foot_index=(190, 30), right_foot_index=(190, 38),
+)
+
+#: 随意站着 —— 用户原话「随意站着手臂没有下垂不是山式」。
+#: 两膝 171°/148°、双臂在体侧偏上（腕低于肩 0.66，山式是 0.95）。
+#: 曾被山式认走 0.87。它是 CLAUDE.md 那条「站姿在几何上就是一个完美的平板
+#: 支撑」的另一副面孔：山式和随意站着的几何差别只有腿直不直、手臂在哪。
+#: 两膝均值 159° 落在 178±8 的衰减区里还能拿 0.52 分 —— 见 _worse_leg_extended。
+CASUAL_STAND = skeleton(
+    nose=(0, -130), left_ear=(-10, -125), right_ear=(10, -125),
+    left_eye=(-4, -132), right_eye=(4, -132),
+    mouth_left=(-4, -122), mouth_right=(4, -122),
+    left_shoulder=(-20, -100), right_shoulder=(20, -100),
+    left_elbow=(-26, -60), right_elbow=(26, -60),
+    left_wrist=(-30, -34), right_wrist=(30, -34),
+    left_hip=(-15, 0), right_hip=(15, 0),
+    left_knee=(-20, 72), right_knee=(34, 70),
+    left_ankle=(-13, 143), right_ankle=(14, 140),
+    left_heel=(-13, 148), right_heel=(14, 145),
+    left_foot_index=(-26, 154), right_foot_index=(1, 151),
+)
+
+#: 双手撑地的低弓步（体位串联里的过渡）—— 库里没有。前膝屈 79~86°、
+#: 后膝 131~139°、双脚前后拉开 2.26~2.37、髋沉到踝上 0.61~0.66、双手撑地。
+#: 曾被鸽子式认走 0.92（前膝角正落在「前腿屈膝外旋 85±30」的正中间），
+#: 之后依次被半神猴式 0.85、反板式 0.73、侧角伸展式 0.72、上犬式 0.70 接手。
+#: 五轮才拦干净，是这一批里最难的一个。
+LUNGE_HANDS_DOWN = skeleton(
+    nose=(-115, -85), left_ear=(-104, -80), right_ear=(-102, -72),
+    left_eye=(-111, -88), right_eye=(-109, -80),
+    mouth_left=(-109, -76), mouth_right=(-107, -70),
+    left_shoulder=(-85, -59), right_shoulder=(-77, -59),
+    left_elbow=(-92, 0), right_elbow=(-84, 0),
+    left_wrist=(-95, 57), right_wrist=(-87, 57),
+    left_hip=(-8, -8), right_hip=(8, 8),
+    left_knee=(-85, -5), right_knee=(70, 0),
+    left_ankle=(-85, 64), right_ankle=(130, 62),
+    left_heel=(-92, 68), right_heel=(140, 66),
+    left_foot_index=(-70, 70), right_foot_index=(112, 70),
+)
+
+NON_TEMPLATE_POSES = {
+    "蹲姿·躯干直立": SQUAT_UPRIGHT,
+    "蹲姿·躯干前倾": SQUAT_FOLDED,
+    "幻椅式": CHAIR,
+    "压脚背": TOE_SQUAT,
+    "四足跪姿": TABLE_TOP,
+    "站立伸展（半程前屈）": HALF_FOLD,
+    "俯卧看手机": PRONE_PHONE,
+    "随意站着": CASUAL_STAND,
+    "双手撑地低弓步": LUNGE_HANDS_DOWN,
+}
 
 
 def test_a_squat_is_not_claimed_by_any_template():
@@ -257,7 +410,7 @@ def test_a_squat_is_not_claimed_by_any_template():
         match = match_pose(L.normalize(pts))
         assert match is None, (
             f"{name} 被 {match.zh} 认走（{match.score:.3f}）—— "
-            f"库里没有蹲姿模板，它应该回到未识别体式"
+            f"库里没有它的模板，它应该回到未识别体式"
         )
 
 
@@ -265,19 +418,67 @@ def test_the_gate_is_what_rejects_it_not_a_lucky_threshold():
     """区别对待「门槛归零」和「刚好没过 min_score」。
 
     后者靠的是分数差，容差一放宽就会翻过去；前者是定义性的。
+
+    只查每个负例**曾经被认走的那个**模板 —— 断言它在所有 20 个模板上门槛
+    都归零是过分的要求（一个站姿不需要被桥式的门槛拦住，它靠朝向和检查项
+    就够远了），而且会把这个测试变成「模板集快照」，加模板就红。
     """
-    for name, pts in NON_TEMPLATE_POSES.items():
-        norm = L.normalize(pts)
-        for key in ("pigeon", "ardha_hanumanasana"):
+    was_claimed_by = {
+        "蹲姿·躯干直立": ("pigeon", "ardha_hanumanasana"),
+        "蹲姿·躯干前倾": ("pigeon", "ardha_hanumanasana"),
+        "幻椅式": ("anjaneyasana",),
+        "压脚背": ("tree",),
+        "四足跪姿": ("plank", "chaturanga", "bridge", "child"),
+        "站立伸展（半程前屈）": ("uttanasana", "parsvottanasana", "downdog", "warrior3"),
+        "俯卧看手机": ("pigeon", "ardha_hanumanasana", "updog"),
+        "随意站着": ("tree",),
+        "双手撑地低弓步": ("pigeon", "ardha_hanumanasana", "reverse_plank", "updog"),
+    }
+    for name, keys in was_claimed_by.items():
+        norm = L.normalize(NON_TEMPLATE_POSES[name])
+        for key in keys:
             m = score_by_key(norm, key)
-            assert m.gate == 0.0, f"{name} 在 {key} 上门槛系数应为 0，实为 {m.gate}"
+            factor = m.gate * m.orientation
+            assert factor == 0.0, (
+                f"{name} 在 {key} 上的门槛系数是 {factor:.3f}（gate {m.gate:.2f} × "
+                f"朝向 {m.orientation:.2f}），不是 0 —— 现在挡住它的是分数差而非"
+                f"定义性否决，容差一动就会翻过去"
+            )
+
+
+def test_mountain_is_the_one_pose_with_no_definitional_gate():
+    """山式的例外，以及为什么它只能靠分数差。
+
+    上面那个测试的规矩是「负例必须被定义性门槛否决，不能只靠没过 min_score」。
+    山式过不了这条规矩，而这不是山式的缺陷：**它和「随意站着」之间没有任何
+    二值特征可分**。山式就是笔直站好、双臂垂在体侧，两者的差别全在程度上
+    （膝多直、手臂多低），而门槛要的是「有 / 没有」那种判据。硬造一条
+    只会是把某个容差改写成门槛的样子，判别力一分不多。
+
+    所以山式靠的是：min_score 抬高到 0.70（模板里唯一一个），
+    「双腿伸直」取两膝中较屈的那个（``_worse_leg_extended``）并给到最高权重。
+    这个测试守住那个差距别缩水 —— 缩到 0.02 就等于没挡。
+    """
+    template = TEMPLATES_BY_KEY["mountain"]
+    m = score_by_key(L.normalize(NON_TEMPLATE_POSES["随意站着"]), "mountain")
+    margin = template.min_score - m.score
+    assert margin >= 0.05, (
+        f"随意站着在山式上拿到 {m.score:.3f}，门槛 {template.min_score} —— "
+        f"只差 {margin:.3f}。山式没有定义性门槛可依，全靠这个差距，"
+        f"留不到 0.05 就该重新想办法，而不是把 min_score 再抬一点"
+    )
 
 
 def test_gates_do_not_touch_the_poses_they_guard():
-    """加门槛不能误伤本来就该匹配的体式。"""
-    for key in ("pigeon", "ardha_hanumanasana"):
+    """加门槛不能误伤本来就该匹配的体式。
+
+    遍历**所有**带门槛的模板，而不是手列几个 —— 手列的清单加模板时会忘。
+    """
+    guarded = [t.key for t in TEMPLATES if t.gates]
+    assert guarded, "一个门槛都没有？这个测试就白写了"
+    for key in guarded:
         m = score_by_key(L.normalize(_canonical(key)), key)
-        assert m.gate == 1.0, f"{key} 的标准骨架被自己的门槛挡住了"
+        assert m.gate == 1.0, f"{key} 的标准骨架被自己的门槛挡住了（gate {m.gate:.2f}）"
         assert m.score > 0.9, f"{key} 标准骨架自身分只有 {m.score:.3f}"
 
 
