@@ -14,6 +14,12 @@
 * **常否**（大量 0 分）—— 要么这一项写错了，要么样本被别的体式污染了。
   后者更常见，也更危险：它意味着模板在认领不属于它的帧。
 
+「遮挡」那一列是**读数可信度**，和上面三类是独立的问题：它是这一项有多少帧
+读到了置信度 <0.5 的关键点。侧面机位下远侧那半边身体每一帧都被近侧挡住，
+MediaPipe 给的是推测值，而推测值看着完全合理。这一列高的项，它的分布有一部分
+是照着推测量出来的 —— 不影响分数（实测排除低置信侧会改变 0 个判定，而且会
+丢掉正确测量），但拿它调容差之前要知道。
+
 只读关键点，不碰 cv2 / mediapipe
 --------------------------------
 ``scores.json`` 里存着每一帧的原始关键点，几何层重算是毫秒级的。所以这个
@@ -45,6 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from yoga_grid.landmarks import PoseView, normalize, to_pixels  # noqa: E402
 from yoga_grid.poses import (  # noqa: E402
+    MIN_TRUSTED_VISIBILITY,
     TEMPLATES,
     TEMPLATES_BY_KEY,
     Template,
@@ -64,11 +71,13 @@ ALWAYS_FAIL_RATIO = 0.25
 
 @dataclass
 class Frame:
-    """一帧的最小信息：时间、来源、归一化骨架。"""
+    """一帧的最小信息：时间、来源、归一化骨架、关键点置信度。"""
 
     source: str
     t: float
     norm: np.ndarray
+    #: (33,) 置信度。早期只存了归一化骨架的文件里是 None。
+    vis: np.ndarray | None = None
 
 
 def load(path: Path) -> list[Frame]:
@@ -93,10 +102,17 @@ def load(path: Path) -> list[Frame]:
             continue
         lm = np.asarray(raw, dtype=np.float64)
         if lm.shape != (33, 3):
-            # 33×2 的早期格式已经是 norm 了，不能再乘一次宽高。
+            # 33×2 的早期格式已经是 norm 了，不能再乘一次宽高，也没有置信度。
             frames.append(Frame(tag, float(entry["t"]), lm[:, :2]))
             continue
-        frames.append(Frame(tag, float(entry["t"]), normalize(to_pixels(lm, width, height))))
+        frames.append(
+            Frame(
+                tag,
+                float(entry["t"]),
+                normalize(to_pixels(lm, width, height)),
+                lm[:, 2],
+            )
+        )
 
     if not frames:
         raise SystemExit(
@@ -120,18 +136,25 @@ def population(frames: list[Frame], template: Template) -> list[Frame]:
     return keep
 
 
-def _measure(frames: list[Frame], template: Template) -> dict[str, list[tuple[float, float]]]:
-    """每项检查在样本上的 (实测值, 得分) 列表。侧别取模板自己选的那一侧。"""
-    out: dict[str, list[tuple[float, float]]] = {c.label: [] for c in template.checks}
+def _measure(
+    frames: list[Frame], template: Template
+) -> dict[str, list[tuple[float, float, float]]]:
+    """每项检查在样本上的 (实测值, 得分, 置信度) 列表。
+
+    侧别取模板自己选的那一侧。置信度是这一项用到的关键点里最低的那个 ——
+    低于 0.5 说明这个实测值有一部分是 MediaPipe 猜的（侧面机位下远侧半身
+    每一帧都被挡住），拿它去校准容差等于照着推测值定标准。
+    """
+    out: dict[str, list[tuple[float, float, float]]] = {
+        c.label: [] for c in template.checks
+    }
     for frame in frames:
-        match = _score_template(frame.norm, template)
+        match = _score_template(frame.norm, template, frame.vis)
         if match is None:
             continue
-        view = PoseView(frame.norm, match.side)
-        for check in template.checks:
-            score, value = check.score(view)
-            if not np.isnan(value):
-                out[check.label].append((value, score))
+        for check in match.checks:
+            if not np.isnan(check.value):
+                out[check.label].append((check.value, check.score, check.confidence))
     return out
 
 
@@ -173,23 +196,32 @@ def report_template(frames: list[Frame], template: Template, min_n: int) -> None
         f"（中位 {np.median(spine):+.2f}）"
     )
 
-    print(f"   {'检查项':<22}{'目标':>14}  {'实测 p10~p90（中位）':>26}  {'满分':>5}  判断")
+    print(
+        f"   {'检查项':<22}{'目标':>14}  {'实测 p10~p90（中位）':>26}  {'满分':>5}"
+        f"{'遮挡':>6}  判断"
+    )
     measured = _measure(sample, template)
     for check in template.checks:
         rows = measured[check.label]
         if not rows:
             print(f"   {check.label:<22}{'—— 全部无法测量':>14}")
             continue
-        values = np.array([v for v, _ in rows])
-        scores = np.array([s for _, s in rows])
+        values = np.array([v for v, _, _ in rows])
+        scores = np.array([s for _, s, _ in rows])
+        conf = np.array([c for _, _, c in rows])
         target = f"{check.target}±{check.tol}{check.unit}"
         band = (
             f"{np.percentile(values, 10):.2f} ~ {np.percentile(values, 90):.2f}"
             f"（{np.median(values):.2f}）"
         )
         full = f"{(scores >= 0.999).mean():.0%}"
+        # 「遮挡」列：这一项有多少帧读到了置信度 <0.5 的关键点。
+        # 比例高说明这一项的分布有一部分是照着推测值量出来的 —— 不改分数，
+        # 但拿它调容差之前要知道。
+        blind = (conf < MIN_TRUSTED_VISIBILITY).mean()
         print(
-            f"   {check.label:<22}{target:>14}  {band:>26}  {full:>5}  "
+            f"   {check.label:<22}{target:>14}  {band:>26}  {full:>5}"
+            f"{f'{blind:.0%}' if blind else '—':>6}  "
             f"{_verdict(values, scores, check.target, check.tol)}"
         )
 

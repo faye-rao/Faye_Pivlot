@@ -10,9 +10,40 @@ import numpy as np
 
 from . import landmarks as L
 from .extract import FramePose, VideoInfo
-from .poses import PoseMatch
+from .poses import MIN_TRUSTED_VISIBILITY, PoseMatch
 from .score import Candidate
 from .select import SelectionReport
+
+
+def _add_occlusion_note(add, occluded: list, weak: list) -> None:
+    """把「这一帧有哪些项读到了被遮挡的关键点」写出来。
+
+    为什么值得单独说：``normalize()`` 丢掉了置信度，规则层看不见哪些关键点是
+    MediaPipe 猜的，而侧面机位下远侧那半边身体每一帧都被挡住（实测某支视频
+    右膝置信度中位数 0.315、80% 的帧低于 0.5）。猜出来的数值看着完全合理，
+    所以**沉默地报一个数字，等于断言自己看不见的事**。
+
+    刻意只提示、不改分数：实测把低置信度的一侧排除掉会改变 0 个识别结果，
+    而且有反例 —— 用户确认正确的那帧侧角伸展式，被遮挡的前腿膝角读 113°
+    是**对的**，排除它等于丢掉一个正确测量。所以这里只负责说清楚。
+    """
+    if not occluded:
+        return
+    names = "、".join(c.label for c in occluded)
+    already = {id(c) for c in weak}
+    hidden_but_passing = [c for c in occluded if id(c) not in already]
+    add(
+        f"⚠️ 有 {len(occluded)} 项用到了被遮挡的关键点（{names}）—— "
+        f"机位在身体侧面时远侧的手脚会被近侧挡住，MediaPipe 给的是推测值。"
+    )
+    if hidden_but_passing:
+        add("")
+        add(
+            f"其中 {len(hidden_but_passing)} 项**看着达标其实没测准**："
+            + "、".join(f"{c.label}（置信度 {c.confidence:.2f}）" for c in hidden_but_passing)
+            + "。想让这些项可信，机位要能同时看到两侧，或者换个方向再录一遍。"
+        )
+    add("")
 
 
 def _fmt_time(seconds: float) -> str:
@@ -43,6 +74,10 @@ def _pose_dict(pose: PoseMatch | None) -> dict[str, Any] | None:
                 "tol": c.tol,
                 "unit": c.unit,
                 "score": round(c.score, 4),
+                # 这一项用到的关键点里最低的置信度。侧面机位下远侧半身是
+                # MediaPipe 猜的，而猜出来的数值看着完全合理 —— 只有这一列
+                # 能看出某个实测值有多少是真的。
+                "confidence": round(c.confidence, 3),
             }
             for c in pose.checks
         ],
@@ -313,9 +348,14 @@ def write_report(
             add("")
 
         weak = cand.pose.weak_checks()
+        occluded = [
+            c for c in cand.pose.checks if c.confidence < MIN_TRUSTED_VISIBILITY
+        ]
+
         if not weak:
             add(f"正位分 {cand.pose.score:.2f}，各项检查都在容差内。")
             add("")
+            _add_occlusion_note(add, occluded, weak)
             continue
 
         add(f"正位分 {cand.pose.score:.2f}。偏离较多的项：")
@@ -325,12 +365,19 @@ def write_report(
                 continue
             # 角度用整数够了；无单位的量（躯干长度、方向余弦）小数才有信息量。
             digits = 0 if check.unit == "°" else 2
+            # 依赖被遮挡关键点的项，数值后面直接标出来 —— 让人别照着它调姿势。
+            flag = (
+                f"，**置信度仅 {check.confidence:.2f}，这个数不可信**"
+                if check.confidence < MIN_TRUSTED_VISIBILITY
+                else ""
+            )
             add(
                 f"- **{check.label}**：实测 {check.value:.{digits}f}{check.unit}，"
                 f"目标 {check.target:.{digits}f}{check.unit} ± {check.tol:.{digits}f}"
-                f"（得分 {check.score:.2f}）"
+                f"（得分 {check.score:.2f}{flag}）"
             )
         add("")
+        _add_occlusion_note(add, occluded, weak)
 
     add("## 想换掉某一格")
     add("")

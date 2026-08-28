@@ -37,7 +37,13 @@ def rematch(candidates: list[Candidate], exclude: frozenset[str] = frozenset()) 
         cand.grid_slot = None
         cand.note = ""
         cand.pose = (
-            match_pose(cand.frame.norm, exclude) if cand.frame.norm is not None else None
+            match_pose(
+                cand.frame.norm,
+                exclude,
+                cand.frame.lm[:, 2] if cand.frame.lm is not None else None,
+            )
+            if cand.frame.norm is not None
+            else None
         )
         recognized += cand.pose is not None
     return recognized

@@ -46,7 +46,11 @@ def _assign_alignment(group: list[Candidate]) -> str | None:
 
     dominant = max(votes, key=lambda k: votes[k])
     for cand in group:
-        match = score_by_key(cand.frame.norm, dominant)
+        match = score_by_key(
+            cand.frame.norm,
+            dominant,
+            cand.frame.lm[:, 2] if cand.frame.lm is not None else None,
+        )
         cand.alignment = match.score if match else None
         # 让标签跟随簇的结论，避免同一簇里出现两个体式名。
         if match is not None:

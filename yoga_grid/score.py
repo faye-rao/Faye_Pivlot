@@ -147,7 +147,11 @@ def build_candidates(
                 velocity=v,
                 components=components,
                 quality=quality,
-                pose=match_pose(frame.norm, exclude_poses),
+                pose=match_pose(
+                    frame.norm,
+                    exclude_poses,
+                    frame.lm[:, 2] if frame.lm is not None else None,
+                ),
             )
         )
 

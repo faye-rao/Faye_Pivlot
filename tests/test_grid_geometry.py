@@ -615,3 +615,107 @@ def test_calibrate_reads_a_scores_file_and_reports(tmp_path, capsys):
     assert calibrate.main([str(scores), "--key", "mountain"]) == 0
     out = capsys.readouterr().out
     assert "山式" in out and "双腿伸直" in out and "178±8" in out, out
+
+
+# --------------------------------------------------------------------------
+# 关键点置信度：让规则层知道「这个数有多少是猜的」。
+#
+# normalize() 只保留 (33, 2)，置信度那一列被丢掉，于是规则层无法分辨测量值和
+# 推测值。侧面机位下远侧半身每一帧都被挡住（实测某支视频右膝置信度中位数
+# 0.315、80% 的帧低于 0.5），而 MediaPipe 倾向于照着可见那一侧复制，数值看着
+# 完全合理。
+#
+# 刻意**只报告、不改分数**：实测把低置信度的一侧排除掉会改变 0 个识别结果，
+# 而且有反例 —— 用户确认正确的那帧侧角伸展式，被遮挡的前腿膝角读 113° 是对的。
+# --------------------------------------------------------------------------
+
+
+def test_virtual_point_parts_stay_in_sync():
+    """_VIRTUAL_PARTS 必须覆盖每个虚拟点，否则追踪会静默漏掉关键点。"""
+    from yoga_grid.landmarks import _VIRTUAL, _VIRTUAL_PARTS
+
+    assert set(_VIRTUAL) == set(_VIRTUAL_PARTS), (
+        f"虚拟点两处不同步：只在 _VIRTUAL 里 {set(_VIRTUAL) - set(_VIRTUAL_PARTS)}，"
+        f"只在 _VIRTUAL_PARTS 里 {set(_VIRTUAL_PARTS) - set(_VIRTUAL)}"
+    )
+    for name, parts in _VIRTUAL_PARTS.items():
+        for part in parts:
+            assert part in L.IDX, f"{name} 的构成点 {part!r} 不是有效关键点"
+
+
+def test_traced_confidence_takes_the_minimum_over_touched_landmarks():
+    """一次测量只要用到一个猜出来的点，整个读数就不可信 —— 所以取 min。"""
+    from yoga_grid.landmarks import PoseView
+
+    pts = L.normalize(standing())
+    vis = np.ones(L.N_LANDMARKS)
+    vis[L.IDX["right_knee"]] = 0.21
+
+    view = PoseView(pts, "left", vis)
+
+    # 只读左腿：碰不到那个低置信度的点
+    view.trace()
+    view.ang("left_hip", "left_knee", "left_ankle")
+    assert view.traced_confidence() == 1.0
+
+    # 读右腿：应该读到 0.21
+    view.trace()
+    view.ang("right_hip", "right_knee", "right_ankle")
+    assert abs(view.traced_confidence() - 0.21) < 1e-9
+
+    # 虚拟点要把构成它的真实点都算进去 —— knee_mid 含 right_knee
+    view.trace()
+    view.dy("hip_mid", "knee_mid")
+    assert abs(view.traced_confidence() - 0.21) < 1e-9
+
+    # 没传 vis 时一律 1.0（手搭骨架的测试、早期只存归一化骨架的文件都走这条）
+    plain = PoseView(pts, "left")
+    plain.trace()
+    plain.dy("hip_mid", "knee_mid")
+    assert plain.traced_confidence() == 1.0
+
+
+def test_confidence_reaches_check_results_without_changing_scores():
+    """置信度要一路传到 CheckResult，而且**不能**动分数。"""
+    from yoga_grid.poses import MIN_TRUSTED_VISIBILITY, score_by_key
+
+    pts = L.normalize(standing())
+    vis = np.ones(L.N_LANDMARKS)
+    vis[L.IDX["right_knee"]] = 0.18
+
+    without = score_by_key(pts, "mountain")
+    with_vis = score_by_key(pts, "mountain", vis)
+
+    assert abs(without.score - with_vis.score) < 1e-12, (
+        "传入置信度改变了分数 —— 这个特性只该报告，不该打分"
+    )
+    assert all(c.confidence == 1.0 for c in without.checks), "没传 vis 应该一律 1.0"
+
+    low = [c for c in with_vis.checks if c.confidence < MIN_TRUSTED_VISIBILITY]
+    assert low, "「双腿伸直」用到右膝，应该被标成低置信度"
+    assert all(abs(c.confidence - 0.18) < 1e-9 for c in low)
+
+
+def test_report_says_when_a_check_read_an_occluded_landmark():
+    """report.md 必须说出来，而不是照样报一个数字。"""
+    from yoga_grid.poses import CheckResult
+    from yoga_grid.report import _add_occlusion_note
+
+    lines: list[str] = []
+    weak = CheckResult("双腿伸直", 159.0, 178, 8, "°", 0.0, 0.18)
+    passing = CheckResult("身体竖直", 1.3, 0, 8, "°", 1.0, 0.22)
+
+    _add_occlusion_note(lines.append, [weak, passing], [weak])
+    text = "\n".join(lines)
+
+    assert "被遮挡" in text
+    assert "双腿伸直" in text and "身体竖直" in text
+    # 「看着达标其实没测准」这一句只该点那些**没进偏离列表**的项 ——
+    # 偏离列表里的项已经逐条标了置信度，重复一遍是噪音。
+    assert "看着达标其实没测准" in text
+    assert text.count("身体竖直") == 2 and text.count("双腿伸直") == 1
+
+    # 没有被遮挡的项时一句话都不该加
+    lines.clear()
+    _add_occlusion_note(lines.append, [], [])
+    assert lines == []

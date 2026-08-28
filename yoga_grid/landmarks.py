@@ -227,6 +227,20 @@ _VIRTUAL = {
 }
 
 
+#: 每个虚拟点由哪些真实关键点算出来 —— 追踪置信度时要把它们都算进去。
+#: 和 ``_VIRTUAL`` 一一对应；加虚拟点时两处都要改，测试会盯着。
+_VIRTUAL_PARTS: dict[str, tuple[str, ...]] = {
+    "hip_mid": ("left_hip", "right_hip"),
+    "shoulder_mid": ("left_shoulder", "right_shoulder"),
+    "knee_mid": ("left_knee", "right_knee"),
+    "ankle_mid": ("left_ankle", "right_ankle"),
+    "wrist_mid": ("left_wrist", "right_wrist"),
+    "elbow_mid": ("left_elbow", "right_elbow"),
+    "foot_mid": ("left_foot_index", "right_foot_index"),
+    "spine_mid": ("left_shoulder", "right_shoulder", "left_hip", "right_hip"),
+}
+
+
 class PoseView:
     """按侧别解析关键点名的只读视图。
 
@@ -235,21 +249,64 @@ class PoseView:
     就自动兼容了左右两个方向的同一体式。
 
     距离和 dy 的单位是躯干长度（前提是传进来的是 normalize() 的输出）。
+
+    置信度（可选）
+    -------------
+    ``vis`` 是 (33,) 的置信度数组，来自 MediaPipe 原始关键点的第三列。
+    传了它，就可以问「刚才那次测量用到的关键点里，最低的置信度是多少」——
+    见 :meth:`trace` 和 :meth:`traced_confidence`。
+
+    为什么需要：``normalize()`` 只保留 (33, 2)，置信度那一列被丢掉了，于是
+    规则层**无法知道哪些关键点是真的**。侧面机位下远侧那半边身体每一帧都被
+    挡住，MediaPipe 给的是猜测（实测某支视频右膝置信度中位数 0.315、80% 的帧
+    低于 0.5），而它倾向于照着可见那一侧复制，所以数值看着完全合理。
+
+    ``vis`` 为 None 时所有置信度一律按 1.0 处理 —— 手搭骨架的测试和早期
+    只存了归一化骨架的 scores.json 都走这条路，行为和没有这个特性时一样。
     """
 
-    __slots__ = ("pts", "side")
+    __slots__ = ("pts", "side", "vis", "_touched")
 
-    def __init__(self, pts: np.ndarray, side: str = "left") -> None:
+    def __init__(
+        self, pts: np.ndarray, side: str = "left", vis: np.ndarray | None = None
+    ) -> None:
         self.pts = pts
         self.side = side
+        self.vis = vis
+        self._touched: set[int] | None = None
+
+    def _resolve(self, name: str) -> str:
+        if name.startswith("s_"):
+            return f"{self.side}_{name[2:]}"
+        if name.startswith("o_"):
+            return f"{_OPPOSITE_SIDE[self.side]}_{name[2:]}"
+        return name
+
+    def trace(self) -> None:
+        """开始记录接下来读了哪些关键点。"""
+        self._touched = set()
+
+    def traced_confidence(self) -> float:
+        """记录期间读到的关键点里**最低**的置信度，并停止记录。
+
+        取 min 而不是均值：一次测量只要用到一个猜出来的关键点，结果就不可信，
+        其余点再确定也补不回来。
+
+        没传 ``vis``、或者一个关键点都没读到时返回 1.0。
+        """
+        touched, self._touched = self._touched, None
+        if self.vis is None or not touched:
+            return 1.0
+        return float(min(self.vis[i] for i in touched))
 
     def pt(self, name: str) -> np.ndarray:
         if name in _VIRTUAL:
+            if self._touched is not None:
+                self._touched.update(IDX[n] for n in _VIRTUAL_PARTS[name])
             return _VIRTUAL[name](self.pts)
-        if name.startswith("s_"):
-            name = f"{self.side}_{name[2:]}"
-        elif name.startswith("o_"):
-            name = f"{_OPPOSITE_SIDE[self.side]}_{name[2:]}"
+        name = self._resolve(name)
+        if self._touched is not None:
+            self._touched.add(IDX[name])
         return self.pts[IDX[name]]
 
     def ang(self, a: str, vertex: str, c: str) -> float:

@@ -98,6 +98,12 @@ class Template:
     gates: tuple[Gate, ...] = ()
 
 
+#: 低于这个置信度就当成「MediaPipe 猜的」，不当成测量值。
+#: 0.5 是 MediaPipe 自己文档里区分「可见」与否的常用界线，也和实测吻合：
+#: 侧面机位下远侧关键点集中在 0.2~0.5，近侧在 0.95 以上，中间几乎是空的。
+MIN_TRUSTED_VISIBILITY = 0.5
+
+
 @dataclass
 class CheckResult:
     label: str
@@ -106,6 +112,11 @@ class CheckResult:
     tol: float
     unit: str
     score: float
+    #: 这一项用到的关键点里最低的置信度。没有置信度信息时是 1.0。
+    #: 低于 ``MIN_TRUSTED_VISIBILITY`` 说明这个实测值有一部分是猜出来的 ——
+    #: 它照样参与打分（排除它反而会丢掉真实信息，实测过），但**报告里必须
+    #: 说出来**，否则工具就在断言自己看不见的事。
+    confidence: float = 1.0
 
 
 @dataclass
@@ -1161,23 +1172,36 @@ UNKNOWN_LABEL = "未识别体式"
 # --------------------------------------------------------------------------
 
 
-def _score_template(norm: np.ndarray, template: Template) -> PoseMatch | None:
-    """在一个侧别假设下给模板打分；对非对称体式左右各试一次取高分。"""
+def _score_template(
+    norm: np.ndarray, template: Template, vis: np.ndarray | None = None
+) -> PoseMatch | None:
+    """在一个侧别假设下给模板打分；对非对称体式左右各试一次取高分。
+
+    ``vis`` 是可选的 (33,) 置信度数组。给了它，每项检查会额外记下「我用到的
+    关键点里最低的置信度」（见 ``CheckResult.confidence``）—— 只用于报告，
+    **不改变任何分数**。理由见 README「局限」：实测排除低置信度的一侧会
+    改变 0 个判定，而且有实证会丢掉正确的测量值。
+    """
     sides = ("left",) if template.symmetric else ("left", "right")
     best: PoseMatch | None = None
 
     for side in sides:
-        view = PoseView(norm, side)
+        view = PoseView(norm, side, vis)
         results: list[CheckResult] = []
         total_weight = 0.0
         total_score = 0.0
 
         for check in template.checks:
+            view.trace()
             score, value = check.score(view)
+            confidence = view.traced_confidence()
             if math.isnan(score):
                 continue
             results.append(
-                CheckResult(check.label, value, check.target, check.tol, check.unit, score)
+                CheckResult(
+                    check.label, value, check.target, check.tol, check.unit, score,
+                    confidence,
+                )
             )
             total_score += score * check.weight
             total_weight += check.weight
@@ -1207,7 +1231,9 @@ def _score_template(norm: np.ndarray, template: Template) -> PoseMatch | None:
     return best
 
 
-def score_by_key(norm: np.ndarray, key: str) -> PoseMatch | None:
+def score_by_key(
+    norm: np.ndarray, key: str, vis: np.ndarray | None = None
+) -> PoseMatch | None:
     """指定模板打分，**不设门槛**。
 
     聚类之后用来给同一簇内的每一帧算可比的正位分：簇内主导体式已经定了，
@@ -1216,18 +1242,20 @@ def score_by_key(norm: np.ndarray, key: str) -> PoseMatch | None:
     template = TEMPLATES_BY_KEY.get(key)
     if template is None:
         return None
-    return _score_template(norm, template)
+    return _score_template(norm, template, vis)
 
 
 def match_pose(
-    norm: np.ndarray, exclude: frozenset[str] = frozenset()
+    norm: np.ndarray,
+    exclude: frozenset[str] = frozenset(),
+    vis: np.ndarray | None = None,
 ) -> PoseMatch | None:
     """返回最匹配且过了门槛的体式，没有就返回 None。"""
     best: PoseMatch | None = None
     for template in TEMPLATES:
         if template.key in exclude:
             continue
-        match = _score_template(norm, template)
+        match = _score_template(norm, template, vis)
         if match is None or match.score < template.min_score:
             continue
         if best is None or match.score > best.score:
