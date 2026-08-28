@@ -306,6 +306,22 @@ def _front_shin_from_horizontal(view: PoseView) -> float:
     return view.horiz("s_knee", "s_ankle")
 
 
+def _wrist_below_elbow(view: PoseView) -> float:
+    """腕低于肘的距离（取两侧中较小的那个），躯干长度为单位。
+
+    回答「撑地的是手还是整条小臂」：手撑地时腕比肘低半条小臂
+    （标准四柱支撑式 0.43、平板式 0.50、上犬式 0.42），小臂贴地时肘腕
+    几乎同高（实测肘板式 0.05~0.15）。
+
+    取 min 而不是均值，理由同 ``_lowest_wrist_drop``：只要有一侧的小臂
+    没贴地，就不是肘板式。
+    """
+    return min(
+        view.dy("s_elbow", "s_wrist"),
+        view.dy("o_elbow", "o_wrist"),
+    )
+
+
 def _back_ankle_below_knee(view: PoseView) -> float:
     """后侧踝低于后侧膝的距离，躯干长度为单位。负 = 踝比膝高。
 
@@ -763,7 +779,14 @@ TEMPLATES: tuple[Template, ...] = (
         # 与平板式同一条门槛。给平板式补上之后，那 46 帧四足跪姿立刻改投
         # 四柱支撑式（0.80）—— 跪姿屈着的肘正好满足「屈肘约 90°」。
         # 补门槛把误判推给邻居，就得顺着推下去补完。
-        gates=(Gate("膝盖不能落地", _lower_knee_drop, -2.0, 0.60, 0.20),),
+        gates=(
+            Gate("膝盖不能落地", _lower_knee_drop, -2.0, 0.60, 0.20),
+            # 四柱支撑式是**手**撑地、肘向后夹在肋侧，所以腕比肘低半条小臂
+            # （标准骨架 0.43）。肘板式是小臂整条贴地、肘腕同高（实测 0.09）。
+            # 「屈肘约 90°」两者都满足，所以光靠肘角分不开 —— 实测 v1 里
+            # 20:40~21:34 那 18 帧肘板式，有 14 帧被这个模板认走 0.90~1.00。
+            Gate("必须手撑地（肘明显高于腕）", _wrist_below_elbow, 0.22, 1.20, 0.10),
+        ),
     ),
     Template(
         key="side_plank",
@@ -992,6 +1015,33 @@ TEMPLATES: tuple[Template, ...] = (
     # 模板补门槛只让这些帧回到「未识别」；补模板才是正解，实测未覆盖率
     # 28% / 14% 的大头就是它们。
     # ----------------------------------------------------------------------
+    Template(
+        key="forearm_plank",
+        zh="肘板式",
+        en="Forearm Plank",
+        symmetric=True,
+        spine_up=(-0.42, 0.42),  # 身体接近水平
+        checks=(
+            # 小臂整条贴地是肘板式的定义，肘腕几乎同高 —— 实测 0.05~0.15。
+            # 手撑地的那些体式是 0.42~0.50。
+            Check("小臂贴地（肘腕同高）", _wrist_below_elbow, 0.10, 0.20, 0.25, 2.5, ""),
+            Check("屈肘约 100°", _arms_extended, 100, 22, 35, 2.0),
+            Check("肩在肘正上方", lambda v: v.vert("s_elbow", "s_shoulder"), 8, 20, 32, 2.0),
+            Check("身体成一直线", lambda v: v.ang("shoulder_mid", "hip_mid", "ankle_mid"), 170, 16, 30, 2.0),
+            Check("身体接近水平", lambda v: v.horiz("shoulder_mid", "ankle_mid"), 9, 15, 28, 1.5),
+            Check("双腿伸直", _legs_extended, 173, 15, 32, 1.5),
+            Check("头部朝下（俯卧）", lambda v: v.dy("nose", "shoulder_mid"), -0.16, 0.28, 0.40, 1.5, ""),
+        ),
+        min_score=0.64,
+        gates=(
+            # 与四柱支撑式的分水岭，方向和四柱那条相反、成对存在。
+            # 分界取 0.22、slack 0.10，和四柱支撑式那条对称。实测两边的核心
+            # 样本离得很开（肘板式 -0.06~0.00，四柱 0.29~0.30），但 0.16~0.24
+            # 这一带确实含糊，样本又只有个位数 —— 不过度调参，两边各留余量。
+            Gate("小臂必须贴地", _wrist_below_elbow, -0.50, 0.22, 0.10),
+            Gate("膝盖不能落地", _lower_knee_drop, -2.0, 0.60, 0.20),
+        ),
+    ),
     Template(
         key="chair",
         zh="幻椅式",

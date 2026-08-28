@@ -529,6 +529,32 @@ def toe_squat() -> np.ndarray:
     )
 
 
+def forearm_plank() -> np.ndarray:
+    """肘板式：小臂整条贴地、屈肘约 100°、肩在肘正上方，身体成一直线。
+
+    实测（v1 里 20:40~21:34 那 18 帧）：肘角 95~109°（中位 99），肘在肩下
+    0.39~0.47，腕在肩下 0.46~0.58，**肘腕高差只有 0.05~0.15**，
+    肩髋踝 120~172（中位 165），躯干竖直分量 -0.29~+0.37（中位 -0.02）。
+
+    肘腕高差就是它和四柱支撑式的分水岭：手撑地时腕比肘低半条小臂
+    （标准四柱骨架 0.43、平板式 0.50），小臂贴地时肘腕几乎同高。
+    缺这个模板时，那 18 帧里 14 帧被四柱支撑式认走 0.90~1.00。
+    """
+    return skeleton(
+        nose=(-132, 18),
+        left_ear=(-120, 10), right_ear=(-118, 20),
+        left_shoulder=(-104, -2), right_shoulder=(-96, 6),
+        left_elbow=(-98, 42), right_elbow=(-90, 50),
+        left_wrist=(-138, 51), right_wrist=(-130, 59),
+        left_hip=(-4, -8), right_hip=(4, 8),
+        left_knee=(46, 15), right_knee=(54, 23),
+        left_ankle=(96, 25), right_ankle=(104, 33),
+        left_heel=(104, 21), right_heel=(112, 29),
+        left_foot_index=(112, 37), right_foot_index=(120, 45),
+    )
+
+
+CANONICAL["forearm_plank"] = forearm_plank
 CANONICAL["chair"] = chair
 CANONICAL["ardha_uttanasana"] = ardha_uttanasana
 CANONICAL["table_top"] = table_top
@@ -686,6 +712,11 @@ CUES: dict[str, tuple[str, ...]] = {
         "重量慢慢向后坐向脚跟，感到刺痛就抬起一点",
         "躯干竖直，头顶向上，肋骨不外翻",
         "这是脚底和脚趾的强度体式，宁可少坐一点也别硬撑",
+    ),    "forearm_plank": (
+        "肩在肘正上方，不要把肩往前推过肘",
+        "小臂整条压地，指根与肘同时用力向下推",
+        "髋不塌不撅，从肩到脚跟一条线",
+        "股四头肌收紧、脚跟向后蹬远，别把重量都挂在肩上",
     ),
 }
 
@@ -1025,6 +1056,11 @@ ANNOTATED: dict[str, tuple[Cue, ...]] = {
         Cue("重量慢慢后坐向脚跟", "hip_mid", _DOWN),
         Cue("脚趾回勾压地，两脚贴紧", "left_foot_index", _DOWN),
         Cue("刺痛就抬起一点，别硬撑", "left_heel"),
+    ),    "forearm_plank": (
+        Cue("肩在肘正上方，肩不前推", "left_shoulder", _DOWN),
+        Cue("小臂整条压地", "left_wrist", _DOWN),
+        Cue("髋不塌不撅，\n从肩到脚跟一条线", "spine_mid", _UP),
+        Cue("脚跟向后蹬远", "left_heel", (1.0, 0.0)),
     ),
 }
 

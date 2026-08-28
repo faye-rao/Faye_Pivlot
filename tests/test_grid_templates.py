@@ -468,6 +468,32 @@ def test_real_frame_geometry_matches_its_new_template():
         )
 
 
+def test_forearm_plank_and_chaturanga_split_on_where_the_arm_rests():
+    """肘板式 vs 四柱支撑式：唯一的区别是撑地的是手还是整条小臂。
+
+    两者的肘角都在 90~100°、身体都成一直线、都是俯卧 —— 「屈肘约 90°」这一项
+    分不开它们。分水岭是腕比肘低多少：手撑地时低半条小臂（标准四柱骨架 0.43），
+    小臂贴地时肘腕同高（实测肘板式 -0.06~0.00）。
+
+    真实代价：缺肘板式模板时，某支视频里 20:40~21:34 那 18 帧肘板式有 14 帧
+    被四柱支撑式认走 0.90~1.00 —— 而且没进九宫格，所以逐格核对也发现不了。
+    """
+    fore = L.normalize(_canonical("forearm_plank"))
+    chat = L.normalize(_canonical("chaturanga"))
+
+    for norm, want, other in ((fore, "forearm_plank", "chaturanga"),
+                              (chat, "chaturanga", "forearm_plank")):
+        match = match_pose(norm)
+        assert match is not None and match.key == want, (
+            f"{want} 的标准骨架被认成 {match.zh if match else '未识别'}"
+        )
+        rival = score_by_key(norm, other)
+        assert rival.gate == 0.0, (
+            f"{want} 的骨架在 {other} 上门槛系数是 {rival.gate:.2f}，应为 0 —— "
+            f"这两个体式必须靠定义性门槛分开，不能靠分数差"
+        )
+
+
 def test_the_new_templates_do_not_poach_the_poses_they_were_confused_with():
     """新模板不能反过来把老体式抢走。
 
