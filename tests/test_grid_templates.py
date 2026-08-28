@@ -185,7 +185,7 @@ def test_restore_landmarks_handles_both_formats():
 
 
 def test_every_pose_renders():
-    """19 个体式的线稿和对照卡都要能渲染出来，不抛异常。"""
+    """每个体式的线稿和对照卡都要能渲染出来，不抛异常。"""
     from yoga_grid.reference import render_pose, render_reference_card
 
     for key in CANONICAL:
@@ -392,17 +392,71 @@ LUNGE_HANDS_DOWN = skeleton(
     left_foot_index=(-70, 70), right_foot_index=(112, 70),
 )
 
+#: 现在**有**模板的四个体式，骨架按同一批实测不变量手搭。
+#:
+#: 它们原先在 NON_TEMPLATE_POSES 里，断言「没有模板会认领」；补上模板之后
+#: 断言反过来 —— 必须认出、而且认成对的那一个。这比只用 reference.py 的标准
+#: 骨架检验强得多：**标准骨架是我按目标值搭的，实测骨架不是。** 目标值取错了
+#: 位置，标准骨架照样满分，只有实测骨架会红。
+NOW_TEMPLATED = {
+    "幻椅式": (CHAIR, "chair"),
+    "压脚背": (TOE_SQUAT, "toe_squat"),
+    "四足跪姿": (TABLE_TOP, "table_top"),
+    "展背式（半程前屈）": (HALF_FOLD, "ardha_uttanasana"),
+}
+
+#: 仍然没有模板的。蹲姿和「随意站着」是刻意不补的：前者和压脚背差别很小
+#: （都是两腿都折着、躯干竖直、双脚并拢），补上会让两者互抢；后者根本不是
+#: 体式。俯卧看手机同理。双手撑地低弓步是**过渡动作**，而且实测那 13 帧
+#: 分成两种形状（前膝 79~86 / 后膝 131~139，与前膝 117~120 / 后膝 96~99），
+#: 一个模板盖不住；认出来也不会改变选帧，因为簇间排序用的是画质和保持时长、
+#: 不是正位分。
 NON_TEMPLATE_POSES = {
     "蹲姿·躯干直立": SQUAT_UPRIGHT,
     "蹲姿·躯干前倾": SQUAT_FOLDED,
-    "幻椅式": CHAIR,
-    "压脚背": TOE_SQUAT,
-    "四足跪姿": TABLE_TOP,
-    "站立伸展（半程前屈）": HALF_FOLD,
     "俯卧看手机": PRONE_PHONE,
     "随意站着": CASUAL_STAND,
     "双手撑地低弓步": LUNGE_HANDS_DOWN,
 }
+
+
+def test_real_frame_geometry_matches_its_new_template():
+    """按实测搭的骨架必须认成对的体式，不只是「认出了什么」。"""
+    for name, (pts, key) in NOW_TEMPLATED.items():
+        match = match_pose(L.normalize(pts))
+        assert match is not None, f"{name} 认不出来了 —— 它现在有模板（{key}）"
+        assert match.key == key, (
+            f"{name} 被认成 {match.zh}（{match.score:.3f}），应该是 {key}"
+        )
+        assert match.score > 0.75, (
+            f"{name} 认对了但只有 {match.score:.3f} —— 目标值大概取偏了位置，"
+            f"实测数据落在容差边缘"
+        )
+
+
+def test_the_new_templates_do_not_poach_the_poses_they_were_confused_with():
+    """新模板不能反过来把老体式抢走。
+
+    补模板的风险和补门槛相反：门槛把帧推给邻居，模板把邻居的帧抢过来。
+    这里钉住四对具体的相邻关系 —— 每一对都是先有过误判的。
+    """
+    pairs = [
+        ("chair", "anjaneyasana"),          # 幻椅式曾被新月式认走
+        ("chair", "mountain"),              # 两者只差腿直不直
+        ("toe_squat", "tree"),              # 压脚背曾整簇占掉树式
+        ("toe_squat", "child"),             # 两者都深度屈膝，靠躯干区分
+        ("table_top", "plank"),             # 四足跪姿曾被平板式认走
+        ("table_top", "chaturanga"),
+        ("ardha_uttanasana", "uttanasana"),  # 同一动作的两个深度
+        ("ardha_uttanasana", "parsvottanasana"),
+    ]
+    for new_key, old_key in pairs:
+        norm = L.normalize(_canonical(old_key))
+        match = match_pose(norm)
+        assert match is not None and match.key == old_key, (
+            f"补了 {new_key} 之后，{old_key} 的标准骨架被 "
+            f"{match.zh if match else '未识别'} 抢走了"
+        )
 
 
 def test_a_squat_is_not_claimed_by_any_template():
@@ -419,23 +473,30 @@ def test_the_gate_is_what_rejects_it_not_a_lucky_threshold():
 
     后者靠的是分数差，容差一放宽就会翻过去；前者是定义性的。
 
-    只查每个负例**曾经被认走的那个**模板 —— 断言它在所有 20 个模板上门槛
+    只查每个负例**曾经被认走的那个**模板 —— 断言它在每一个模板上门槛
     都归零是过分的要求（一个站姿不需要被桥式的门槛拦住，它靠朝向和检查项
     就够远了），而且会把这个测试变成「模板集快照」，加模板就红。
     """
     was_claimed_by = {
         "蹲姿·躯干直立": ("pigeon", "ardha_hanumanasana"),
         "蹲姿·躯干前倾": ("pigeon", "ardha_hanumanasana"),
+        # 下面四个现在有自己的模板了，但**曾经抢走它们的那些模板仍然必须
+        # 判定它不是自己** —— 有了正确答案不等于错误答案自动消失。
         "幻椅式": ("anjaneyasana",),
         "压脚背": ("tree",),
         "四足跪姿": ("plank", "chaturanga", "bridge", "child"),
-        "站立伸展（半程前屈）": ("uttanasana", "parsvottanasana", "downdog", "warrior3"),
+        "展背式（半程前屈）": ("uttanasana", "parsvottanasana", "downdog", "warrior3"),
         "俯卧看手机": ("pigeon", "ardha_hanumanasana", "updog"),
         "随意站着": ("tree",),
         "双手撑地低弓步": ("pigeon", "ardha_hanumanasana", "reverse_plank", "updog"),
     }
     for name, keys in was_claimed_by.items():
-        norm = L.normalize(NON_TEMPLATE_POSES[name])
+        pts = (
+            NON_TEMPLATE_POSES[name]
+            if name in NON_TEMPLATE_POSES
+            else NOW_TEMPLATED[name][0]
+        )
+        norm = L.normalize(pts)
         for key in keys:
             m = score_by_key(norm, key)
             factor = m.gate * m.orientation
