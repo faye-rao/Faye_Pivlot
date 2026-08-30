@@ -3,6 +3,7 @@
     python -m yoga_grid 练习.mp4                    # 完整流水线
     python -m yoga_grid grid out                    # 改完 scores.json 后只重拼
     python -m yoga_grid rescore out                 # 用当前模板重算识别，跳过姿态估计
+    python -m yoga_grid images 素材目录              # 看这批图片能不能用来校准模板
 """
 
 from __future__ import annotations
@@ -168,6 +169,19 @@ def build_parser() -> argparse.ArgumentParser:
     ref.add_argument("-o", "--out", type=Path, default=Path("体式库"), help="输出目录")
     ref.add_argument("--width", type=int, default=1180, help="卡片宽度，像素")
     ref.add_argument("--font", default=None, help="中文字体文件路径")
+
+    imgs = sub.add_parser(
+        "images",
+        help="对一批体式图片跑姿态估计，看模板会把它们认成什么（判断素材能不能用）",
+    )
+    imgs.add_argument("dir", type=Path, help="图片目录（递归），也可以直接给单张图")
+    imgs.add_argument(
+        "-o", "--out", type=Path, default=None,
+        help="把骨架与打分写进这个 JSON（默认 <目录>/images.json）",
+    )
+    imgs.add_argument("--model", default="full", help="姿态模型：lite / full / heavy，或 .task 路径")
+    imgs.add_argument("--work-size", type=int, default=720, help="姿态估计时缩放到的长边像素")
+    imgs.add_argument("--no-json", action="store_true", help="只看表格，不写 JSON")
 
     why = sub.add_parser("explain", help="解释某一帧为什么入选或落选")
     why.add_argument("out", type=Path, help="上次运行的输出目录（含 scores.json）")
@@ -567,6 +581,43 @@ def cmd_reference(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_images(args: argparse.Namespace) -> int:
+    from . import images as images_mod
+
+    root: Path = args.dir
+    if not root.exists():
+        print(f"找不到目录：{root}", file=sys.stderr)
+        return 2
+
+    paths = images_mod.iter_images(root)
+    if not paths:
+        print(
+            f"{root} 里没有图片（认得的扩展名：{', '.join(sorted(images_mod.IMAGE_SUFFIXES))}）",
+            file=sys.stderr,
+        )
+        return 1
+
+    model_path = resolve_model(args.model)
+    print(f"对 {len(paths)} 张图跑姿态估计…", file=sys.stderr)
+    probes = images_mod.probe_images(
+        paths, model_path, root=root if root.is_dir() else root.parent,
+        work_size=args.work_size,
+    )
+
+    base = root if root.is_dir() else root.parent
+    print()
+    print(images_mod.format_table(probes, base))
+    print()
+    print(images_mod.summarize(probes))
+
+    if not args.no_json:
+        target = args.out or (base / "images.json")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        images_mod.dump(probes, target, base)
+        print(f"\n骨架与打分已写入 {target}", file=sys.stderr)
+    return 0
+
+
 def cmd_explain(args: argparse.Namespace) -> int:
     scores = args.out / "scores.json"
     if not scores.is_file():
@@ -580,7 +631,7 @@ def main(argv: list[str] | None = None) -> int:
     compat.configure_console()
     argv = list(sys.argv[1:] if argv is None else argv)
     # 让 `python -m yoga_grid 视频.mp4` 免写 run 子命令。
-    known = {"run", "grid", "rescore", "explain", "reference", "-h", "--help"}
+    known = {"run", "grid", "rescore", "explain", "reference", "images", "-h", "--help"}
     if argv and argv[0] not in known:
         argv.insert(0, "run")
 
@@ -592,6 +643,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_reference(args)
     if args.command == "explain":
         return cmd_explain(args)
+    if args.command == "images":
+        return cmd_images(args)
     if args.command == "grid":
         return cmd_grid(args)
     if args.command == "run":

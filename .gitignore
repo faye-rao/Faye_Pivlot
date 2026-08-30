@@ -13,6 +13,9 @@ dist/
 
 # yoga_grid run output
 out/
+# `yoga_grid images` writes this next to the images it probed, which may well
+# be a tracked directory.
+images.json
 
 # Scratch git worktrees created for background agents. Transient tooling
 # state, not project content -- but `.claude/` itself is not ignored, since

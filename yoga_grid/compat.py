@@ -78,6 +78,20 @@ def imwrite(path: Path | str, image: np.ndarray, params: list[int] | None = None
     path.write_bytes(buffer.tobytes())
 
 
+def imread(path: Path | str) -> np.ndarray | None:
+    """``cv2.imread`` 的 Unicode 安全版本，读不出来返回 None。
+
+    和 ``imwrite`` 对称：路径交给 Python 处理，只把字节丢给 OpenCV 解码。
+    """
+    try:
+        data = Path(path).read_bytes()
+    except OSError:
+        return None
+    if not data:
+        return None
+    return cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+
 def open_capture(path: Path | str) -> cv2.VideoCapture:
     """打开视频，失败时抛出带可读信息的异常。"""
     capture = cv2.VideoCapture(cv2_path(path))
