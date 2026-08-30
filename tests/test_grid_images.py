@@ -13,13 +13,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from yoga_grid.images import ALIASES, label_from_path  # noqa: E402
+from yoga_grid.images import (  # noqa: E402
+    ALIASES, MATCHED, QUALIFIED, QUALIFIERS, UNKNOWN, UNMODELLED, label_from_path,
+)
 from yoga_grid.poses import TEMPLATES  # noqa: E402
 
 
-def _label(name: str, parent: str = "素材") -> tuple[str | None, bool]:
+def _label(name: str, parent: str = "素材") -> tuple[str | None, str]:
     root = Path("/tmp/lib")
-    return label_from_path(root / parent / name, root)
+    label = label_from_path(root / parent / name, root)
+    return label.key, label.status
 
 
 def test_aliases_point_at_real_templates():
@@ -72,19 +75,19 @@ def test_no_alias_denies_a_pose_that_now_has_a_template():
 
 def test_library_naming_convention():
     """`reference_images/` 用的是 `梵文 - English.png`。"""
-    assert _label("Virabhadrasana II - Warrior II.png") == ("warrior2", True)
-    assert _label("Adho Mukha Svanasana - Downward Facing Dog.png") == ("downdog", True)
-    assert _label("Purvottanasana - Reverse Plank.png.jpg") == ("reverse_plank", True)
+    assert _label("Virabhadrasana II - Warrior II.png") == ("warrior2", MATCHED)
+    assert _label("Adho Mukha Svanasana - Downward Facing Dog.png") == ("downdog", MATCHED)
+    assert _label("Purvottanasana - Reverse Plank.png.jpg") == ("reverse_plank", MATCHED)
 
 
 def test_chinese_names_work_too():
-    assert _label("下犬式_01.jpg") == ("downdog", True)
-    assert _label("战士二 侧面.png") == ("warrior2", True)
+    assert _label("下犬式_01.jpg") == ("downdog", MATCHED)
+    assert _label("战士二 侧面.png") == ("warrior2", MATCHED)
 
 
 def test_folder_name_counts_as_a_label():
     """按体式分子目录是另一种常见组织方式。"""
-    assert _label("IMG_2043.jpg", parent="三角伸展") == ("triangle", True)
+    assert _label("IMG_2043.jpg", parent="三角伸展") == ("triangle", MATCHED)
 
 
 def test_longest_alias_wins_over_substring():
@@ -93,52 +96,96 @@ def test_longest_alias_wins_over_substring():
     短别名优先的话它会被 "uttanasana" 认走，于是半前屈的骨架被当成站立前屈的
     真值，正好是最难发现的那种错。
     """
-    assert _label("Ardha Uttanasana - Half Forward Fold.png") == (None, True)
-    assert _label("Uttanasana - Forward Fold.png") == ("uttanasana", True)
+    assert _label("Ardha Uttanasana - Half Forward Fold.png") == (None, UNMODELLED)
+    assert _label("Uttanasana - Forward Fold.png") == ("uttanasana", MATCHED)
 
 
 def test_the_two_traps_the_library_readme_records():
     """差一个词就是另一个体式，`reference_images/README.md` 专门记了这两对。"""
     # 全劈叉，不是半神猴式
-    assert _label("Hanumanasana - Monkey or Splits.png") == (None, True)
+    assert _label("Hanumanasana - Monkey or Splits.png") == (None, UNMODELLED)
     assert _label("Ardha Hanumanasana - Half Splits.png.jpg") == (
-        "ardha_hanumanasana", True
+        "ardha_hanumanasana", MATCHED
     )
     # 反战士，不是反板式
-    assert _label("Viparita Virabhadrasana - Reverse Warrior.png") == (None, True)
-    assert _label("Purvottanasana - Reverse Plank.png.jpg") == ("reverse_plank", True)
+    assert _label("Viparita Virabhadrasana - Reverse Warrior.png") == (None, UNMODELLED)
+    assert _label("Purvottanasana - Reverse Plank.png.jpg") == ("reverse_plank", MATCHED)
 
 
 def test_warrior_numerals_do_not_collide():
     """罗马数字是前缀关系：I 是 II 和 III 的前缀，按短的匹配全会认成战士一。"""
-    assert _label("Virabhadrasana I - Warrior I.png") == ("warrior1", True)
-    assert _label("Virabhadrasana II - Warrior II.png") == ("warrior2", True)
-    assert _label("Virabhadrasana III - Warrior III.png") == ("warrior3", True)
+    assert _label("Virabhadrasana I - Warrior I.png") == ("warrior1", MATCHED)
+    assert _label("Virabhadrasana II - Warrior II.png") == ("warrior2", MATCHED)
+    assert _label("Virabhadrasana III - Warrior III.png") == ("warrior3", MATCHED)
 
 
 def test_pyramid_and_side_angle_are_different_poses():
     """Parsvottanasana / Parsvakonasana 只差中间一段。"""
     assert _label("Parsvottanasana - Intense Side Stretch.png") == (
-        "parsvottanasana", True
+        "parsvottanasana", MATCHED
     )
-    assert _label("Parsvakonasana - Side Angle.png") == ("parsvakonasana", True)
+    assert _label("Parsvakonasana - Side Angle.png") == ("parsvakonasana", MATCHED)
 
 
 def test_unrecognised_name_is_distinguishable_from_unmodelled_pose():
     """两种「没有 key」必须分得开。
 
-    `(None, True)` = 认得这个体式，但故意没做模板 —— 素材有用，用来决定要不要加模板。
-    `(None, False)` = 名字没对上任何东西 —— 得人去看这是什么。
+    `(None, UNMODELLED)` = 认得这个体式，但故意没做模板 —— 素材有用，用来决定要不要加模板。
+    `(None, UNKNOWN)` = 名字没对上任何东西 —— 得人去看这是什么。
     """
-    assert _label("IMG_0031.jpg", parent="随手拍") == (None, False)
-    assert _label("Bakasana - Crow.png") == (None, False)   # 库里有、模板没有，也没进别名表
-    assert _label("Half Moon.png") == (None, True)          # 进了别名表，明确标为无模板
+    assert _label("IMG_0031.jpg", parent="随手拍") == (None, UNKNOWN)
+    assert _label("Bakasana - Crow.png") == (None, UNKNOWN)   # 库里有、模板没有，也没进别名表
+    assert _label("Half Moon.png") == (None, UNMODELLED)          # 进了别名表，明确标为无模板
+
+
+def test_qualifiers_that_change_the_pose_are_not_swallowed():
+    """**这四条是用户第一批素材上真错过的**，不是假想的。
+
+    梵文体式名靠限定词区分体式，不是修饰同一个体式。别名表只挡得住列过的
+    组合，没列过的会被安静忽略：
+
+        Adho Mukha Vrksasana            手倒立   被标成了树式
+        Utthita Chaturanga Dandasana    直臂斜板 被标成了四柱支撑式
+        Upavistha Parivritta ...        坐姿扭转 被标成了侧角伸展式
+        Parivrtta Ashta Chandrasana     扭转新月 被标成了新月式
+
+    第二条尤其说明问题：模板判它是直臂斜板 0.91、四柱支撑式只有 0.64 ——
+    **模板是对的，标注是错的**。要是照这条标注去「校准」，会拿一张直臂斜板
+    把四柱支撑式的容差撑开。
+
+    穷举所有组合补不完，所以反过来：命中的别名没吃掉限定词就不下判断。
+    """
+    assert _label("Adho Mukha Vrksasana.jpg") == (None, QUALIFIED)
+    assert _label("Utthita Chaturanga Dandasana.jpg") == (None, QUALIFIED)
+    assert _label("Upavistha Parivritta Parsvakonasana.jpg") == (None, QUALIFIED)
+    assert _label("Parivrtta Ashta Chandrasana - Revolved Crescent Moon.png") == (
+        None, QUALIFIED
+    )
+
+
+def test_qualifiers_the_alias_itself_consumes_are_fine():
+    """限定词是别名的一部分时不该触发 —— 否则半数体式都认不出来。"""
+    assert _label("Adho Mukha Svanasana.jpg") == ("downdog", MATCHED)
+    assert _label("Urdhva Mukha Svanasana.jpg") == ("updog", MATCHED)
+    assert _label("Utthita Parsvakonasana.jpg") == ("parsvakonasana", MATCHED)
+    assert _label("Ardha Hanumanasana.jpg") == ("ardha_hanumanasana", MATCHED)
+    assert _label("Eka Pada Rajakapotasana.jpg") == ("pigeon", MATCHED)
+    assert _label("Viparita Virabhadrasana.jpg") == (None, UNMODELLED)
+
+
+def test_qualifier_list_does_not_shadow_any_alias_root():
+    """限定词不能等于某个别名本身，否则那个别名永远认不出来。
+
+    比如把 "side" 收进限定词，`side plank` 会被自己的限定词否掉。
+    """
+    clashes = sorted(q for q in QUALIFIERS if q in ALIASES)
+    assert not clashes, f"这些限定词同时也是别名，会把自己否掉：{clashes}"
 
 
 def test_alias_must_match_whole_words():
     """别名是按词匹配的，不能被更长的词裹进去误命中。"""
-    assert _label("treetop-yoga-retreat.jpg") == (None, False)
-    assert _label("Vrksasana - Tree.png") == ("tree", True)
+    assert _label("treetop-yoga-retreat.jpg") == (None, UNKNOWN)
+    assert _label("Vrksasana - Tree.png") == ("tree", MATCHED)
 
 
 def _run_all() -> int:

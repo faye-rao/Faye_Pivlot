@@ -86,9 +86,52 @@ ALIASES: dict[str, str | None] = {
     "hanumanasana": None, "monkey or splits": None, "splits": None,
     "viparita virabhadrasana": None, "reverse warrior": None,
     "ardha chandrasana": None, "half moon": None,
+    # Kapotasana 是鸽王式（深后弯），和 pigeon 模板对应的
+    # Eka Pada Rajakapotasana 不是一个体式。
+    "kapotasana": None, "king pigeon": None,
 }
 
 _ALIAS_ORDER = sorted(ALIASES, key=len, reverse=True)
+
+# 梵文体式名靠限定词区分体式，而不是修饰同一个体式：
+#
+#     Vrksasana                 树式
+#     Adho Mukha Vrksasana      手倒立      —— 词根相同，两个体式
+#     Chaturanga Dandasana      四柱支撑式
+#     Utthita Chaturanga Dandasana  直臂斜板
+#
+# 别名表列过的组合由「最长优先」挡住；没列过的由 _unconsumed_qualifier 挡住。
+# 收录标准是**这个词一出现就换了体式**。「extended」不在其列：
+# Extended Triangle 就是三角伸展式本身，收进来会误伤。
+QUALIFIERS: tuple[str, ...] = (
+    "adho mukha", "urdhva", "parivrtta", "parivritta", "revolved",
+    "utthita", "upavistha", "supta", "ardha", "eka pada", "viparita",
+    "salamba", "niralamba", "prasarita", "parsva", "baddha",
+)
+
+MATCHED = "matched"        # 认出体式，且它有模板
+UNMODELLED = "unmodelled"  # 认出体式，但**故意**没有模板
+QUALIFIED = "qualified"    # 名字里有没消化掉的限定词，不敢下判断
+UNKNOWN = "unknown"        # 名字没对上任何东西
+
+
+@dataclass(frozen=True)
+class Label:
+    """文件名认出了什么。
+
+    四种状态刻意分开，因为**对使用者的意义完全不同**：认对了、库里没有这个
+    体式、名字含糊不敢认、根本没认出来 —— 混成一个「没有 key」会把「我不知道」
+    伪装成「库里没有」。
+    """
+
+    key: str | None
+    status: str
+    detail: str = ""
+
+    @property
+    def known(self) -> bool:
+        """名字对上了某个体式（不管有没有模板）。"""
+        return self.status in (MATCHED, UNMODELLED)
 
 
 @dataclass
@@ -104,7 +147,8 @@ class ImageProbe:
     face_confidence: float = 0.0
     spine_up: float = float("nan")
     labeled: str | None = None          # 从文件名猜到的模板 key
-    labeled_known: bool = False         # 文件名认出来了，但可能对应「没有模板」
+    label_status: str = UNKNOWN         # 见 Label.status
+    label_detail: str = ""
     ranked: list[tuple[str, float]] = field(default_factory=list)
     error: str = ""
 
@@ -139,12 +183,8 @@ def _fold(text: str) -> str:
     return f" {' '.join(text.split())} "
 
 
-def label_from_path(path: Path, root: Path | None = None) -> tuple[str | None, bool]:
-    """从文件名和上级目录名猜这张图标的是哪个体式。
-
-    返回 ``(key, 认出来了没有)``。``(None, True)`` 表示名字认得，但那个体式
-    **故意没有模板**；``(None, False)`` 表示名字没认出来。
-    """
+def label_from_path(path: Path, root: Path | None = None) -> Label:
+    """从文件名和上级目录名猜这张图标的是哪个体式。"""
     parts = [path.stem]
     parent = path.parent
     if root is not None:
@@ -157,9 +197,37 @@ def label_from_path(path: Path, root: Path | None = None) -> tuple[str | None, b
 
     haystack = _fold(" ".join(parts))
     for alias in _ALIAS_ORDER:
-        if _contains(haystack, _fold(alias).strip()):
-            return ALIASES[alias], True
-    return None, False
+        folded = _fold(alias).strip()
+        if not _contains(haystack, folded):
+            continue
+        key = ALIASES[alias]
+        if key is None:
+            # 已经标着「没有模板」了，限定词再挡一次没有意义 —— 这道闸防的是
+            # **认错成某个模板**，而这里根本没给出模板。
+            return Label(None, UNMODELLED, alias)
+        leftover = _unconsumed_qualifier(haystack, folded)
+        if leftover:
+            return Label(None, QUALIFIED, leftover)
+        return Label(key, MATCHED, alias)
+    return Label(None, UNKNOWN, "")
+
+
+def _unconsumed_qualifier(haystack: str, matched: str) -> str:
+    """名字里有没有**没被命中的别名吃掉**的限定词。
+
+    梵文体式名靠限定词区分：`Vrksasana` 是树式，`Adho Mukha Vrksasana` 是
+    手倒立 —— 两个体式，共用一个词根。别名表按最长优先匹配，只能挡住**表里
+    列过**的那些组合；没列过的限定词会安静地被忽略，于是手倒立被标成树式。
+
+    实际发生过，就在用户第一次跑自己的素材时（`Adho Mukha Vrksasana.jpg`
+    标成树式、`Utthita Chaturanga Dandasana.jpg` 标成四柱支撑式，而模板判它
+    是直臂斜板 —— 模板是对的，我的标注是错的）。穷举所有组合是补不完的，
+    所以反过来做：**命中的别名没吃掉限定词，就不下判断。**
+    """
+    for q in QUALIFIERS:
+        if _contains(haystack, q) and not _contains(f" {matched} ", q):
+            return q
+    return ""
 
 
 def _has_cjk(text: str) -> bool:
@@ -229,8 +297,11 @@ def probe_images(
     landmarker = vision.PoseLandmarker.create_from_options(options)
     try:
         for n, path in enumerate(paths, 1):
-            key, known = label_from_path(path, root)
-            probe = ImageProbe(path=path, labeled=key, labeled_known=known)
+            label = label_from_path(path, root)
+            probe = ImageProbe(
+                path=path, labeled=label.key,
+                label_status=label.status, label_detail=label.detail,
+            )
 
             bgr = compat.imread(path)
             if bgr is None:
@@ -326,13 +397,13 @@ def format_table(probes: list[ImageProbe], root: Path) -> str:
         if p.labeled:
             mine = p.score_of(p.labeled)
             label_text = _zh(p.labeled)
-            if p.agrees:
-                verdict = "一致"
-            else:
-                verdict = f"不一致（标注体式得 {mine:.2f}）"
-        elif p.labeled_known:
+            verdict = "一致" if p.agrees else f"不一致（标注体式得 {mine:.2f}）"
+        elif p.label_status == UNMODELLED:
             label_text = "无对应模板"
             verdict = "只能用来决定要不要加模板"
+        elif p.label_status == QUALIFIED:
+            label_text = f"名字含「{p.label_detail}」"
+            verdict = "限定词换了体式，没敢认 —— 请你确认这是什么"
         else:
             label_text = "认不出名字"
             verdict = "文件名没对上任何体式"
@@ -416,7 +487,8 @@ def dump(probes: list[ImageProbe], path: Path, root: Path) -> None:
         entry: dict = {
             "file": name,
             "labeled": p.labeled,
-            "labeled_known": p.labeled_known,
+            "label_status": p.label_status,
+            "label_detail": p.label_detail,
             "detected": p.detected,
         }
         if p.error:
@@ -435,7 +507,7 @@ def dump(probes: list[ImageProbe], path: Path, root: Path) -> None:
         entries.append(entry)
 
     payload = {
-        "version": 1,
+        "version": 2,
         "root": str(root),
         "templates": [t.key for t in TEMPLATES],
         "images": entries,
