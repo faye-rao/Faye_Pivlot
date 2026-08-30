@@ -64,7 +64,7 @@ class TestPoseAnnouncement:
         announcer = Announcer()
         said = drive(session, announcer, figure(PLANK_SIDE), frames=10, step=0.05)
         said += drive(session, announcer, figure(), frames=20, start=0.5, step=0.05)
-        assert any("平板支撑" in s for s in said)
+        assert any("直臂斜板" in s for s in said)
         assert any("山式" in s for s in said)
 
 

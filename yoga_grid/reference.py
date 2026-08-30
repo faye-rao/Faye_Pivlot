@@ -295,7 +295,7 @@ def downdog() -> np.ndarray:
 
 
 def plank() -> np.ndarray:
-    """平板式：身体成一直线略前高后低，双臂伸直垂地，低头。"""
+    """直臂斜板：身体成一直线略前高后低，双臂伸直垂地，低头。"""
     return skeleton(
         nose=(-135, 30),
         left_ear=(-128, 22), right_ear=(-128, 38),
@@ -419,6 +419,146 @@ def uttanasana() -> np.ndarray:
 
 
 CANONICAL["uttanasana"] = uttanasana
+
+
+# --------------------------------------------------------------------------
+# 2026-08 补的四个体式。和上面那些不同，这四具骨架**不是照教科书插画搭的，
+# 而是照真实练习实测的中位数搭的** —— 它们是从两支练习视频里挖出来的，
+# 每一具的注释里写着实测区间。原因见 README「局限」：插画给的是理想值而
+# 不是分布，而容差要校准的正是分布。
+#
+# 这四个体式此前一直在被邻近模板认走（幻椅式→新月式、压脚背→树式、
+# 四足跪姿→直臂斜板、展背式→站立前屈式），补门槛只让它们回到「未识别」；
+# 补模板才是正解。
+# --------------------------------------------------------------------------
+
+
+def chair() -> np.ndarray:
+    """幻椅式：双脚并拢，双膝屈约 120°，重心后坐，双臂上举过头。
+
+    实测（8 帧）：双膝 117~139°，两踝水平间距 0.01~0.07（并拢），
+    踝在髋下 1.05~1.36（站姿），腕在肩上 0.83~0.95（上举），躯干竖直分量 0.98~1.00。
+
+    躯干取 0.97 而不是实测的 1.00：教科书幻椅式上身略前倾以配平后坐的重心，
+    实测这位练习者保持得更直。容差覆盖两者。
+    """
+    return skeleton(
+        nose=(-6, -128),
+        left_ear=(-16, -122), right_ear=(0, -122),
+        left_shoulder=(-20, -98), right_shoulder=(20, -98),
+        left_elbow=(-18, -148), right_elbow=(18, -148),
+        left_wrist=(-14, -193), right_wrist=(14, -193),
+        left_hip=(-15, 0), right_hip=(15, 0),
+        left_knee=(-48, 60), right_knee=(-42, 60),
+        left_ankle=(-18, 128), right_ankle=(-12, 128),
+        left_heel=(-8, 132), right_heel=(-2, 132),
+        left_foot_index=(-46, 134), right_foot_index=(-40, 134),
+    )
+
+
+def ardha_uttanasana() -> np.ndarray:
+    """展背式（半程前屈）：双腿伸直竖直，上身折到略过水平，背部延展。
+
+    实测（18 帧）：躯干竖直分量 -0.35~-0.49（满程前屈是 -0.85 上下），
+    头在髋下 0.50~0.70（满程能到 0.95 以上），双膝 165~180°，
+    两踝间距 0.00~0.27（并拢），踝在髋下 1.4~1.8。
+
+    和站立前屈式是同一个动作的两个深度，靠躯干竖直分量在 -0.60 一刀两断：
+    两个模板各有一条相反方向的门槛，见 poses.py。
+    """
+    return skeleton(
+        nose=(-118, 54),
+        left_ear=(-106, 45), right_ear=(-104, 53),
+        left_shoulder=(-90, 32), right_shoulder=(-90, 48),
+        left_elbow=(-64, 72), right_elbow=(-64, 78),
+        left_wrist=(-38, 110), right_wrist=(-38, 116),
+        left_hip=(-8, -8), right_hip=(8, 8),
+        left_knee=(-6, 80), right_knee=(6, 80),
+        left_ankle=(-3, 158), right_ankle=(3, 158),
+        left_heel=(-3, 163), right_heel=(3, 163),
+        left_foot_index=(-16, 169), right_foot_index=(-10, 169),
+    )
+
+
+def table_top() -> np.ndarray:
+    """四足跪姿/桌面式：四肢撑地，膝在髋正下方，腕在肩正下方，躯干水平。
+
+    实测（46 帧，一支 38 分钟的视频里）：膝在髋下 0.87~0.98，双膝 67~88°，
+    腕在肩下 0.85~0.98，躯干竖直分量 -0.28~+0.32，肩髋踝夹角 126~146°。
+
+    出现频率很高 —— 猫牛式、鸟狗式、婴儿式的进出都经过这里。缺模板时它被
+    直臂斜板、四柱支撑式、桥式、婴儿式轮流认走。
+    """
+    return skeleton(
+        nose=(-138, 8),
+        left_ear=(-126, 2), right_ear=(-124, 10),
+        left_shoulder=(-98, -18), right_shoulder=(-99, -2),
+        left_elbow=(-100, 32), right_elbow=(-101, 44),
+        left_wrist=(-101, 84), right_wrist=(-102, 87),
+        left_hip=(-1, -8), right_hip=(1, 8),
+        left_knee=(-4, 92), right_knee=(4, 92),
+        left_ankle=(52, 88), right_ankle=(56, 88),
+        left_heel=(61, 90), right_heel=(65, 90),
+        left_foot_index=(73, 94), right_foot_index=(77, 94),
+    )
+
+
+def toe_squat() -> np.ndarray:
+    """压脚背：跪坐在脚跟上、脚趾回勾，躯干竖直，双手多在胸前。
+
+    实测（16 帧）：双膝 21~39°（折到最紧），踝在髋下 0.31~0.48，
+    两踝间距 0.00~0.19（并拢），躯干竖直分量 0.87~1.00，膝在髋下 0.01~0.45。
+
+    它把整簇树式占掉过 —— 两膝都折着自然满足树式的「抬起腿屈膝」，
+    两踝并在髋下自然满足「抬起脚贴支撑腿」，只有「支撑腿伸直」否决它。
+
+    双手取胸前合十（肘约 95°），实测这一簇手的位置一直在变（肘 87~172°），
+    所以手臂不进打分项。
+    """
+    return skeleton(
+        nose=(-8, -128),
+        left_ear=(-18, -122), right_ear=(-2, -122),
+        left_shoulder=(-20, -98), right_shoulder=(20, -98),
+        left_elbow=(-35, -58), right_elbow=(35, -58),
+        left_wrist=(-8, -43), right_wrist=(8, -43),
+        left_hip=(-15, 0), right_hip=(15, 0),
+        left_knee=(-62, 25), right_knee=(-58, 25),
+        left_ankle=(-2, 30), right_ankle=(2, 30),
+        left_heel=(6, 26), right_heel=(10, 26),
+        left_foot_index=(-30, 44), right_foot_index=(-26, 44),
+    )
+
+
+def forearm_plank() -> np.ndarray:
+    """前臂平板：小臂整条贴地、屈肘约 100°、肩在肘正上方，身体成一直线。
+
+    实测（v1 里 20:40~21:34 那 18 帧）：肘角 95~109°（中位 99），肘在肩下
+    0.39~0.47，腕在肩下 0.46~0.58，**肘腕高差只有 0.05~0.15**，
+    肩髋踝 120~172（中位 165），躯干竖直分量 -0.29~+0.37（中位 -0.02）。
+
+    肘腕高差就是它和四柱支撑式的分水岭：手撑地时腕比肘低半条小臂
+    （标准四柱骨架 0.43、直臂斜板 0.50），小臂贴地时肘腕几乎同高。
+    缺这个模板时，那 18 帧里 14 帧被四柱支撑式认走 0.90~1.00。
+    """
+    return skeleton(
+        nose=(-132, 18),
+        left_ear=(-120, 10), right_ear=(-118, 20),
+        left_shoulder=(-104, -2), right_shoulder=(-96, 6),
+        left_elbow=(-98, 42), right_elbow=(-90, 50),
+        left_wrist=(-138, 51), right_wrist=(-130, 59),
+        left_hip=(-4, -8), right_hip=(4, 8),
+        left_knee=(46, 15), right_knee=(54, 23),
+        left_ankle=(96, 25), right_ankle=(104, 33),
+        left_heel=(104, 21), right_heel=(112, 29),
+        left_foot_index=(112, 37), right_foot_index=(120, 45),
+    )
+
+
+CANONICAL["forearm_plank"] = forearm_plank
+CANONICAL["chair"] = chair
+CANONICAL["ardha_uttanasana"] = ardha_uttanasana
+CANONICAL["table_top"] = table_top
+CANONICAL["toe_squat"] = toe_squat
 
 
 # --------------------------------------------------------------------------
@@ -549,6 +689,34 @@ CUES: dict[str, tuple[str, ...]] = {
         "髋部主动上推，胸腔向上打开",
         "双腿收紧，脚背向下延展",
         "颈部后仰保持在舒适范围，不硬压",
+    ),    "chair": (
+        "重心后坐向脚跟，膝盖不超过脚尖",
+        "双脚并拢内侧贴紧，膝也并拢不外张",
+        "尾骨向下卷，避免腰椎代偿塌陷",
+        "双臂沿耳侧向上延展，肩胛下沉",
+    ),
+    "ardha_uttanasana": (
+        "只折到背部还能保持平直的位置，不追求折到底",
+        "指尖点小腿或瑜伽砖，靠手轻推来延展背部",
+        "坐骨向后上方推，胸骨向前，把脊柱拉长",
+        "膝可微屈 —— 腿伸直的代价若是弓背，就屈膝",
+    ),
+    "table_top": (
+        "腕在肩正下方，肘窝相对不锁死",
+        "膝在髋正下方，两膝与髋同宽",
+        "指根均匀压地，掌心不塌陷",
+        "脊柱保持中立位，既不塌腰也不弓背",
+    ),
+    "toe_squat": (
+        "脚趾回勾压地，两脚并拢贴紧",
+        "重量慢慢向后坐向脚跟，感到刺痛就抬起一点",
+        "躯干竖直，头顶向上，肋骨不外翻",
+        "这是脚底和脚趾的强度体式，宁可少坐一点也别硬撑",
+    ),    "forearm_plank": (
+        "肩在肘正上方，不要把肩往前推过肘",
+        "小臂整条压地，指根与肘同时用力向下推",
+        "髋不塌不撅，从肩到脚跟一条线",
+        "股四头肌收紧、脚跟向后蹬远，别把重量都挂在肩上",
     ),
 }
 
@@ -864,6 +1032,35 @@ ANNOTATED: dict[str, tuple[Cue, ...]] = {
         Cue("髋部主动上推，胸腔向上打开", "hip_mid", _UP),
         Cue("双腿收紧", "left_knee", _UP),
         Cue("脚背向下延展", "left_foot_index", _DOWN),
+    ),    "chair": (
+        Cue("双臂沿耳侧向上延展，\n肩胛下沉", "left_wrist", _UP),
+        Cue("尾骨向下卷，腰不塌", "hip_mid", _DOWN),
+        Cue("重心后坐向脚跟，\n膝不超过脚尖", "left_knee", (-1.0, 0.0)),
+        Cue("双脚并拢内侧贴紧", "left_foot_index", _DOWN),
+    ),
+    "ardha_uttanasana": (
+        Cue("坐骨向后上方推", "hip_mid", _UP),
+        Cue("胸骨向前，把脊柱拉长", "spine_mid", (-1.0, 0.0)),
+        Cue("只折到背还能平直的位置", "left_shoulder"),
+        Cue("指尖点小腿或砖，\n靠手轻推延展背部", "left_wrist", _DOWN),
+        Cue("膝可微屈 —— 别为伸直而弓背", "left_knee"),
+    ),
+    "table_top": (
+        Cue("腕在肩正下方，肘不锁死", "left_wrist", _DOWN),
+        Cue("脊柱中立，不塌腰不弓背", "spine_mid", _UP),
+        Cue("膝在髋正下方，与髋同宽", "left_knee", _DOWN),
+        Cue("指根均匀压地，掌心不塌", "left_shoulder", _DOWN),
+    ),
+    "toe_squat": (
+        Cue("躯干竖直，肋骨不外翻", "spine_mid", _UP),
+        Cue("重量慢慢后坐向脚跟", "hip_mid", _DOWN),
+        Cue("脚趾回勾压地，两脚贴紧", "left_foot_index", _DOWN),
+        Cue("刺痛就抬起一点，别硬撑", "left_heel"),
+    ),    "forearm_plank": (
+        Cue("肩在肘正上方，肩不前推", "left_shoulder", _DOWN),
+        Cue("小臂整条压地", "left_wrist", _DOWN),
+        Cue("髋不塌不撅，\n从肩到脚跟一条线", "spine_mid", _UP),
+        Cue("脚跟向后蹬远", "left_heel", (1.0, 0.0)),
     ),
 }
 

@@ -91,13 +91,29 @@ def test_folder_name_counts_as_a_label():
 
 
 def test_longest_alias_wins_over_substring():
-    """`Ardha Uttanasana` 是半前屈，不是站立前屈 —— 库里没有对应模板。
+    """`Ardha Uttanasana`（展背式）和 `Uttanasana`（站立前屈式）是两个模板。
 
-    短别名优先的话它会被 "uttanasana" 认走，于是半前屈的骨架被当成站立前屈的
-    真值，正好是最难发现的那种错。
+    短别名优先的话前者会被 "uttanasana" 认走，于是展背式的骨架被当成站立前屈式的
+    真值 —— 正好是最难发现的那种错。这两个是同一个动作的两个深度，模板本身也是
+    靠躯干倒垂过没过半分开的，几何上很近，认错了看不出来。
     """
-    assert _label("Ardha Uttanasana - Half Forward Fold.png") == (None, UNMODELLED)
+    assert _label("Ardha Uttanasana - Half Forward Fold.png") == (
+        "ardha_uttanasana", MATCHED
+    )
     assert _label("Uttanasana - Forward Fold.png") == ("uttanasana", MATCHED)
+
+
+def test_qualifier_gate_reads_every_alias_of_the_pose():
+    """限定词要和**这个体式的所有名字**比，不是只和命中的那一个比。
+
+    梵文名带限定词、英文名不带，是常态。`Ardha Uttanasana - Half Forward Fold`
+    命中的是更长的英文名，它不含 "ardha"；但展背式还有 "ardha uttanasana"
+    这个别名，限定词在那里交代过了。只比命中的那一个，这张图会被误判成「没敢认」。
+    """
+    assert _label("Half Forward Fold.png") == ("ardha_uttanasana", MATCHED)
+    assert _label("Ardha Uttanasana.jpg") == ("ardha_uttanasana", MATCHED)
+    # 反面：幻椅式没有哪个别名交代得了 parivrtta，扭转幻椅是另一个体式
+    assert _label("Parivrtta Utkatasana - Revolved Chair.png") == (None, QUALIFIED)
 
 
 def test_the_two_traps_the_library_readme_records():

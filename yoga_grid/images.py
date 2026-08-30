@@ -5,8 +5,8 @@
 图片能起的作用只有两个，都要人来做决定：
 
 1. **决定该加哪些模板** —— 看图库里有、模板里没有的体式。
-2. **校准已有模板的目标值与容差** —— 只有**真人照片或视频帧**才算数。
-   插画、线稿、剪影、3D 渲染会把已经修好的 bug 装回来，原因写在
+2. **校准已有模板的目标值与容差** —— 只有**真人的一次练习**才算数。插画即使
+   检测得完美也没用：它给的是理想值，而容差要校准的是分布。原因写在
    `reference_images/README.md`：最初的标准骨架照插画搭，三角伸展式的躯干
    竖直分量取到 0.57，而真实练习实测是 -0.01，结果正确的模板先把自己排除在
    朝向门槛之外。
@@ -38,15 +38,19 @@ IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".bmp", ".webp"})
 # **这个体式故意没有模板** —— 报出「库里没有」比硬套一个近似的模板有用。
 #
 # 匹配规则是「最长别名优先」，这样 `Ardha Uttanasana - Half Forward Fold`
-# 会先命中 "ardha uttanasana"（→ None，半前屈没有模板）而不是更短的
-# "uttanasana"。`reference_images/README.md` 记的两对陷阱同理：
+# 会先命中 "ardha uttanasana"（展背式）而不是更短的 "uttanasana"（站立前屈式）——
+# 这两个是同一个动作的两个深度，模板也是靠躯干倒垂过没过半分开的。
+# `reference_images/README.md` 记的两对陷阱同理：
 # Hanumanasana 是全劈叉不是半神猴，Viparita Virabhadrasana 是反战士不是反板式。
 ALIASES: dict[str, str | None] = {
     # —— 有模板的 ——
     "downward facing dog": "downdog", "downwardfacing dog": "downdog",
     "adho mukha svanasana": "downdog", "down dog": "downdog",
     "downdog": "downdog", "下犬": "downdog",
-    "phalakasana": "plank", "plank": "plank", "平板": "plank", "板式": "plank",
+    "phalakasana": "plank", "high plank": "plank", "plank": "plank",
+    "直臂斜板": "plank", "斜板": "plank",
+    "forearm plank": "forearm_plank", "前臂平板": "forearm_plank",
+    "平板": "forearm_plank",
     "virabhadrasana ii": "warrior2", "warrior ii": "warrior2",
     "warrior 2": "warrior2", "战士二": "warrior2",
     "virabhadrasana i": "warrior1", "warrior i": "warrior1",
@@ -84,8 +88,13 @@ ALIASES: dict[str, str | None] = {
     "balasana": "child", "childs pose": "child", "child pose": "child",
     "child": "child", "婴儿": "child",
     "tadasana": "mountain", "mountain": "mountain", "山式": "mountain",
+    "utkatasana": "chair", "chair": "chair", "幻椅": "chair",
+    "bharmanasana": "table_top", "table top": "table_top",
+    "四足跪姿": "table_top", "四足": "table_top",
+    "toe squat": "toe_squat", "压脚背": "toe_squat",
+    "ardha uttanasana": "ardha_uttanasana",
+    "half forward fold": "ardha_uttanasana", "展背": "ardha_uttanasana",
     # —— 故意没有模板，别被更短的别名认走 ——
-    "ardha uttanasana": None, "half forward fold": None,
     "hanumanasana": None, "monkey or splits": None, "splits": None,
     "viparita virabhadrasana": None, "reverse warrior": None,
     "ardha chandrasana": None, "half moon": None,
@@ -237,27 +246,39 @@ def label_from_path(path: Path, root: Path | None = None) -> Label:
             # 已经标着「没有模板」了，限定词再挡一次没有意义 —— 这道闸防的是
             # **认错成某个模板**，而这里根本没给出模板。
             return Label(None, UNMODELLED, alias)
-        leftover = _unconsumed_qualifier(haystack, folded)
+        leftover = _unconsumed_qualifier(haystack, key)
         if leftover:
             return Label(None, QUALIFIED, leftover)
         return Label(key, MATCHED, alias)
     return Label(None, UNKNOWN, "")
 
 
-def _unconsumed_qualifier(haystack: str, matched: str) -> str:
-    """名字里有没有**没被命中的别名吃掉**的限定词。
+def _aliases_for(key: str) -> list[str]:
+    return [_fold(a).strip() for a, k in ALIASES.items() if k == key]
+
+
+def _unconsumed_qualifier(haystack: str, key: str) -> str:
+    """名字里有没有**这个体式的任何一个名字都没吃掉**的限定词。
 
     梵文体式名靠限定词区分：`Vrksasana` 是树式，`Adho Mukha Vrksasana` 是
     手倒立 —— 两个体式，共用一个词根。别名表按最长优先匹配，只能挡住**表里
     列过**的那些组合；没列过的限定词会安静地被忽略，于是手倒立被标成树式。
+
+    比的是**这个 key 的全部别名**，不是恰好命中的那一个。梵文名带限定词、
+    英文名不带是常态：`Ardha Uttanasana - Half Forward Fold` 命中的是更长的
+    英文名 "half forward fold"，它当然不含 "ardha" —— 但同一个展背式还有
+    "ardha uttanasana" 这个别名，限定词在那里被交代过了，就不该拦。
 
     实际发生过，就在用户第一次跑自己的素材时（`Adho Mukha Vrksasana.jpg`
     标成树式、`Utthita Chaturanga Dandasana.jpg` 标成四柱支撑式，而模板判它
     是直臂斜板 —— 模板是对的，我的标注是错的）。穷举所有组合是补不完的，
     所以反过来做：**命中的别名没吃掉限定词，就不下判断。**
     """
+    names = _aliases_for(key)
     for q in QUALIFIERS:
-        if _contains(haystack, q) and not _contains(f" {matched} ", q):
+        if not _contains(haystack, q):
+            continue
+        if not any(_contains(f" {n} ", q) for n in names):
             return q
     return ""
 
@@ -494,13 +515,16 @@ def summarize(probes: list[ImageProbe]) -> str:
         )
     lines.append("")
     lines.append(
-        "能不能用来校准容差，判据是**是不是真人照片或视频帧**，不是画得准不准 ——"
+        "能不能用来校准容差，判据既不是「画得准不准」，也不是「检测得到没有」——"
     )
     lines.append(
-        "  插画画的是「体式应该长什么样」的理想化印象，和真人做同一个体式时的关节角度"
-        "常常差很远。"
+        "  而是**它记录的是真人的一次练习，还是某人对这个体式的印象**。"
+        "插画给的是理想值，"
     )
-    lines.append("  详见 reference_images/README.md。")
+    lines.append(
+        "  而容差要校准的正是分布。检测得完美的插画照样没用。"
+        "详见 reference_images/README.md。"
+    )
     return "\n".join(lines)
 
 
