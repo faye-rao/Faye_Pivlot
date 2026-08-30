@@ -29,6 +29,47 @@ def test_aliases_point_at_real_templates():
     assert not bad, f"别名指向不存在的模板 key：{bad}"
 
 
+def test_every_template_is_reachable_by_some_alias():
+    """**加了模板就必须加别名。**
+
+    别名表是手写的，而模板集在长。漏掉一个的后果不是「少认出一张图」，是
+    那个体式的图会被报成「认不出名字」或者被邻近体式的别名认走，而报告看上去
+    一切正常 —— 恰恰是这个模块存在的意义所在的那类错。
+    """
+    covered = {v for v in ALIASES.values() if v is not None}
+    missing = sorted(t.key for t in TEMPLATES if t.key not in covered)
+    assert not missing, (
+        f"这些模板在别名表里没有入口：{missing}。"
+        "在 yoga_grid/images.py 的 ALIASES 里给每个补上梵文名、英文名和中文名。"
+    )
+
+
+def _fold_plain(text: str) -> str:
+    return " ".join(text.replace("_", " ").replace("-", " ").lower().split())
+
+
+def test_no_alias_denies_a_pose_that_now_has_a_template():
+    """标成「故意没有模板」的别名，不能是某个真存在的模板。
+
+    这条防的是**表和模板集脱节**：`ardha uttanasana`（展背式）原本确实没有模板，
+    所以被标成 None 以免被更短的 `uttanasana` 认走。等哪天补上了这个模板，
+    那条 None 就从「保护」变成「否认」—— 图明明有模板可对，却被报成库里没有。
+    脱节是安静的，所以这里用模板的 key / 中文名 / 英文名三路去撞它。
+    """
+    names: set[str] = set()
+    for t in TEMPLATES:
+        names.update({_fold_plain(t.key), _fold_plain(t.zh), _fold_plain(t.en)})
+
+    denied = sorted(
+        alias for alias, key in ALIASES.items()
+        if key is None and _fold_plain(alias) in names
+    )
+    assert not denied, (
+        f"这些别名标着「没有模板」，但同名的模板已经存在：{denied}。"
+        "把它们改成指向对应的模板 key。"
+    )
+
+
 def test_library_naming_convention():
     """`reference_images/` 用的是 `梵文 - English.png`。"""
     assert _label("Virabhadrasana II - Warrior II.png") == ("warrior2", True)
