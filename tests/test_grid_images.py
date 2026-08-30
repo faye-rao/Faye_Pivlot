@@ -182,6 +182,17 @@ def test_qualifier_list_does_not_shadow_any_alias_root():
     assert not clashes, f"这些限定词同时也是别名，会把自己否掉：{clashes}"
 
 
+def test_sanskrit_spelling_variants_of_the_same_pose():
+    """同一个体式的梵文写法不止一种，整词匹配对拼写变体不宽容。
+
+    `Setu Bandhasana` 和 `Setu Bandha Sarvangasana` 是同一个桥式，但
+    "bandhasana" 是一个词，别名 "setu bandha" 按整词匹配进不去 —— 用户素材里
+    那张就因此报了「认不出名字」。
+    """
+    assert _label("Setu Bandhasana.jpg") == ("bridge", MATCHED)
+    assert _label("Setu Bandha Sarvangasana - Bridge.png") == ("bridge", MATCHED)
+
+
 def test_alias_must_match_whole_words():
     """别名是按词匹配的，不能被更长的词裹进去误命中。"""
     assert _label("treetop-yoga-retreat.jpg") == (None, UNKNOWN)
