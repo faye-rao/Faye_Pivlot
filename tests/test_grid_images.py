@@ -134,33 +134,43 @@ def test_unrecognised_name_is_distinguishable_from_unmodelled_pose():
     `(None, UNKNOWN)` = 名字没对上任何东西 —— 得人去看这是什么。
     """
     assert _label("IMG_0031.jpg", parent="随手拍") == (None, UNKNOWN)
-    assert _label("Bakasana - Crow.png") == (None, UNKNOWN)   # 库里有、模板没有，也没进别名表
-    assert _label("Half Moon.png") == (None, UNMODELLED)          # 进了别名表，明确标为无模板
+    assert _label("DSC_7781.jpg", parent="2026-08-30") == (None, UNKNOWN)
+    assert _label("Half Moon.png") == (None, UNMODELLED)      # 进了别名表，明确标为无模板
+    assert _label("Bakasana - Crow.png") == (None, UNMODELLED)
 
 
-def test_qualifiers_that_change_the_pose_are_not_swallowed():
+def test_the_four_names_that_were_actually_mislabelled():
     """**这四条是用户第一批素材上真错过的**，不是假想的。
 
     梵文体式名靠限定词区分体式，不是修饰同一个体式。别名表只挡得住列过的
-    组合，没列过的会被安静忽略：
+    组合，没列过的会被安静忽略，于是：
 
         Adho Mukha Vrksasana            手倒立   被标成了树式
         Utthita Chaturanga Dandasana    直臂斜板 被标成了四柱支撑式
         Upavistha Parivritta ...        坐姿扭转 被标成了侧角伸展式
         Parivrtta Ashta Chandrasana     扭转新月 被标成了新月式
 
-    第二条尤其说明问题：模板判它是直臂斜板 0.91、四柱支撑式只有 0.64 ——
-    **模板是对的，标注是错的**。要是照这条标注去「校准」，会拿一张直臂斜板
-    把四柱支撑式的容差撑开。
-
-    穷举所有组合补不完，所以反过来：命中的别名没吃掉限定词就不下判断。
+    前两个后来查清了归属（手倒立没有模板；斜板那张用户看图确认是斜板，
+    模板也判斜板 0.91 / 四柱 0.64 —— **模板是对的，标注是错的**），
+    所以现在直接给出正确答案；后两个仍然由限定词闸挡下，报「没敢认」。
     """
-    assert _label("Adho Mukha Vrksasana.jpg") == (None, QUALIFIED)
-    assert _label("Utthita Chaturanga Dandasana.jpg") == (None, QUALIFIED)
+    assert _label("Adho Mukha Vrksasana.jpg") == (None, UNMODELLED)
+    assert _label("Utthita Chaturanga Dandasana.jpg") == ("plank", MATCHED)
     assert _label("Upavistha Parivritta Parsvakonasana.jpg") == (None, QUALIFIED)
     assert _label("Parivrtta Ashta Chandrasana - Revolved Crescent Moon.png") == (
         None, QUALIFIED
     )
+
+
+def test_unlisted_qualifier_combinations_are_withheld():
+    """别名表补得再全，没列过的组合还是会不断出现 —— 那时候必须闭嘴。
+
+    这几个都是真实存在、且和词根是**不同体式**的名字，表里都没有：
+    扭转三角式不是三角伸展式，卧手抓脚趾不是树式。
+    """
+    assert _label("Parivrtta Trikonasana.jpg") == (None, QUALIFIED)
+    assert _label("Supta Padangusthasana.jpg", parent="tree") == (None, QUALIFIED)
+    assert _label("Eka Pada Adho Mukha Svanasana.jpg") == (None, QUALIFIED)
 
 
 def test_qualifiers_the_alias_itself_consumes_are_fine():

@@ -67,6 +67,9 @@ ALIASES: dict[str, str | None] = {
     "eka pada rajakapotasana": "pigeon", "pigeon": "pigeon", "鸽子": "pigeon",
     "chaturanga dandasana": "chaturanga", "chaturanga": "chaturanga",
     "four limb staff": "chaturanga", "四柱": "chaturanga",
+    # Utthita Chaturanga Dandasana 是手臂伸直的斜板，不是屈肘的四柱 ——
+    # 用户看图确认过，模板也判它是斜板 0.91 / 四柱 0.64。
+    "utthita chaturanga dandasana": "plank",
     "vasisthasana": "side_plank", "side plank": "side_plank", "侧板": "side_plank",
     "purvottanasana": "reverse_plank", "reverse plank": "reverse_plank",
     "反板": "reverse_plank",
@@ -89,6 +92,35 @@ ALIASES: dict[str, str | None] = {
     # Kapotasana 是鸽王式（深后弯），和 pigeon 模板对应的
     # Eka Pada Rajakapotasana 不是一个体式。
     "kapotasana": None, "king pigeon": None,
+    "adho mukha vrksasana": None, "handstand": None,
+    # 两批素材里出现过、但模板没覆盖的体式。列在这里是为了让报告说
+    # 「库里没有这个体式」而不是「认不出名字」—— 前者是一条可以照着加模板的
+    # 线索，后者只是噪音。
+    "navasana": None, "boat": None, "船式": None,
+    "prasarita padottanasana": None, "双角": None,
+    "upavistha konasana": None, "坐角": None,
+    "baddha konasana": None, "bound angle": None, "束角": None,
+    "ardha matsyendrasana": None, "半鱼王": None,
+    "salamba sarvangasana": None, "sarvangasana": None,
+    "shoulderstand": None, "肩倒立": None,
+    "salamba sirsasana": None, "sirsasana": None, "headstand": None, "头倒立": None,
+    "urdhva dhanurasana": None, "wheel": None, "轮式": None,
+    "utkata konasana": None, "goddess": None, "女神": None,
+    "utthan pristhasana": None, "lizard": None, "蜥蜴": None,
+    "parsva bakasana": None, "side crow": None,
+    "bakasana": None, "crow": None, "乌鸦": None,
+    "eka pada koundinyasana": None,
+    "garudasana": None, "eagle": None, "鹰式": None,
+    "natarajasana": None, "lord of the dance": None, "舞王": None,
+    "savasana": None, "corpse": None, "摊尸": None,
+    "bhujangasana": None, "cobra": None, "眼镜蛇": None,
+    "salabhasana": None, "locust": None, "蝗虫": None,
+    "camatkarasana": None, "wild thing": None, "野性": None,
+    "parighasana": None, "gate": None, "门闩": None,
+    "pincha mayurasana": None,
+    "malasana": None, "squat": None,
+    "marjaryasana": None, "bitilasana": None, "cat cow": None, "猫牛": None,
+    "adho mukha mandukasana": None, "mandukasana": None, "青蛙": None,
 }
 
 _ALIAS_ORDER = sorted(ALIASES, key=len, reverse=True)
