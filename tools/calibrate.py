@@ -136,7 +136,7 @@ def population(frames: list[Frame], template: Template) -> list[Frame]:
     return keep
 
 
-def _measure(
+def measure(
     frames: list[Frame], template: Template
 ) -> dict[str, list[tuple[float, float, float]]]:
     """每项检查在样本上的 (实测值, 得分, 置信度) 列表。
@@ -200,7 +200,7 @@ def report_template(frames: list[Frame], template: Template, min_n: int) -> None
         f"   {'检查项':<22}{'目标':>14}  {'实测 p10~p90（中位）':>26}  {'满分':>5}"
         f"{'遮挡':>6}  判断"
     )
-    measured = _measure(sample, template)
+    measured = measure(sample, template)
     for check in template.checks:
         rows = measured[check.label]
         if not rows:
