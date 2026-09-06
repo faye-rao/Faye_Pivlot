@@ -555,6 +555,40 @@ def forearm_plank() -> np.ndarray:
 
 
 CANONICAL["forearm_plank"] = forearm_plank
+
+
+def back_opener() -> np.ndarray:
+    """开背：仰卧、屈膝双脚踩地、双臂沿地面伸过头顶，胸和头离地高过髋。
+
+    照真实练习实测的中位数搭，不是照插画。用户 2026-09-02 视频里
+    19:55~21:33 那 98 秒共 40 帧，每一项都取中位：
+
+        躯干竖直分量 +0.05~+0.20（中位 +0.11，即躯干接近水平）
+        **两膝都高过髋** —— 较高的那个 -0.60~-0.47，较低的 -0.42~-0.24
+        屈膝 61~72°（中位 66），踝在膝下方 0.43~0.57（双脚踩实地面）
+        两踝间距 0.00~0.07（双脚并拢）
+        头高过髋 0.22~0.45、高过肩 0.17~0.27（上背离地、胸廓打开）
+        腕在肩下方 0.09~0.17、超出肩 0.26~0.40（双臂贴地伸过头顶）
+
+    「两膝都高过髋」是它区别于全部其它模板的那一条：其余 25 具标准骨架里最低的
+    是战士三式 +0.00、四柱支撑式 +0.08，没有一个膝高过髋。缺这个模板时，
+    那 40 帧里 30 帧被侧板式认走、10 帧被前臂平板认走。
+    """
+    return skeleton(
+        nose=(124, -32),
+        left_ear=(112, -34), right_ear=(110, -26),
+        left_shoulder=(100, -6), right_shoulder=(99, -16),
+        left_elbow=(117, -3), right_elbow=(115, -13),
+        left_wrist=(134, 3), right_wrist=(132, -7),
+        left_hip=(0, 9), right_hip=(0, -9),
+        left_knee=(-47, -31), right_knee=(-39, -54),
+        left_ankle=(-65, 18), right_ankle=(-61, 2),
+        left_heel=(-72, 20), right_heel=(-68, 4),
+        left_foot_index=(-52, 22), right_foot_index=(-48, 6),
+    )
+
+
+CANONICAL["back_opener"] = back_opener
 CANONICAL["chair"] = chair
 CANONICAL["ardha_uttanasana"] = ardha_uttanasana
 CANONICAL["table_top"] = table_top
@@ -717,6 +751,12 @@ CUES: dict[str, tuple[str, ...]] = {
         "小臂整条压地，指根与肘同时用力向下推",
         "髋不塌不撅，从肩到脚跟一条线",
         "股四头肌收紧、脚跟向后蹬远，别把重量都挂在肩上",
+    ),
+    "back_opener": (
+        "双脚踩实地面、与髋同宽，膝对准脚尖，别让膝往内倒",
+        "尾骨轻轻向下沉，别用腰去顶 —— 要打开的是胸和上背，不是压腰",
+        "双臂沿地面往头顶方向送远，肩胛骨主动下沉，别耸肩",
+        "呼气时肋骨往下收，让胸口自己往上打开；停在能顺畅呼吸的深度",
     ),
 }
 
@@ -1061,6 +1101,12 @@ ANNOTATED: dict[str, tuple[Cue, ...]] = {
         Cue("小臂整条压地", "left_wrist", _DOWN),
         Cue("髋不塌不撅，\n从肩到脚跟一条线", "spine_mid", _UP),
         Cue("脚跟向后蹬远", "left_heel", (1.0, 0.0)),
+    ),
+    "back_opener": (
+        Cue("双脚踩实、与髋同宽\n膝对准脚尖", "left_ankle", _DOWN),
+        Cue("尾骨向下沉，\n别用腰顶", "hip_mid", _DOWN),
+        Cue("双臂沿地面送远\n肩胛下沉不耸肩", "left_wrist", (1.0, 0.0)),
+        Cue("打开的是胸和上背", "spine_mid", _UP),
     ),
 }
 

@@ -401,12 +401,35 @@ LUNGE_HANDS_DOWN = skeleton(
 #: 它们原先在 NON_TEMPLATE_POSES 里，断言「没有模板会认领」；补上模板之后
 #: 断言反过来 —— 必须认出、而且认成对的那一个。这比只用 reference.py 的标准
 #: 骨架检验强得多：**标准骨架是我按目标值搭的，实测骨架不是。** 目标值取错了
+#: 开背 —— 用户 2026-09-02 视频 19:55~21:33 那 98 秒的实测骨架。仰卧、屈膝
+#: 双脚踩地、双臂沿地面伸过头顶，两膝都高过髋。
+#:
+#: **取的是那 40 帧里离中位最远的一帧（t=1277.2s，偏离 0.21）**，不是中位那
+#: 一具 —— `reference.py` 的标准骨架就是按中位搭的，拿它来测等于自证。
+#:
+#: 补模板之前，这 40 帧里 30 帧被侧板式认走 0.70、10 帧被前臂平板认走 0.63。
+#: 两边漏的是同一件事：三个撑地体式的「膝盖不能落地」门槛下界都写成 -2.0，
+#: 只问膝有没有太低、从不问有没有太高；侧板式更是压根没有膝的门槛，它那条
+#: 「身体必须成一直线」量的是肩-髋-**踝**，把膝折上去、脚踩在身后，
+#: 肩-髋-踝依然读 174°。
+BACK_OPENER = skeleton(
+    nose=(124, -32), left_eye=(129, -27), right_eye=(130, -29),
+    left_ear=(127, -17), right_ear=(127, -21), mouth_left=(118, -28),
+    mouth_right=(118, -30), left_shoulder=(101, -3), right_shoulder=(98, -20),
+    left_elbow=(130, 0), right_elbow=(120, -32), left_wrist=(138, 4),
+    right_wrist=(136, -18), left_hip=(-2, 9), right_hip=(2, -9),
+    left_knee=(-54, -35), right_knee=(-39, -60), left_ankle=(-66, 17),
+    right_ankle=(-61, -2), left_heel=(-60, 24), right_heel=(-59, 10),
+    left_foot_index=(-96, 25), right_foot_index=(-95, 15),
+)
+
 #: 位置，标准骨架照样满分，只有实测骨架会红。
 NOW_TEMPLATED = {
     "幻椅式": (CHAIR, "chair"),
     "压脚背": (TOE_SQUAT, "toe_squat"),
     "四足跪姿": (TABLE_TOP, "table_top"),
     "展背式（半程前屈）": (HALF_FOLD, "ardha_uttanasana"),
+    "开背": (BACK_OPENER, "back_opener"),
 }
 
 #: 仍然没有模板的。蹲姿和「随意站着」是刻意不补的：前者和压脚背差别很小
@@ -546,6 +569,7 @@ def test_the_gate_is_what_rejects_it_not_a_lucky_threshold():
         "压脚背": ("tree",),
         "四足跪姿": ("plank", "chaturanga", "bridge", "child"),
         "展背式（半程前屈）": ("uttanasana", "parsvottanasana", "downdog", "warrior3"),
+        "开背": ("side_plank", "forearm_plank"),
         "俯卧看手机": ("pigeon", "ardha_hanumanasana", "updog"),
         "随意站着": ("tree",),
         "双手撑地低弓步": ("pigeon", "ardha_hanumanasana", "reverse_plank", "updog"),

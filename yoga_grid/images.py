@@ -92,6 +92,9 @@ ALIASES: dict[str, str | None] = {
     "bharmanasana": "table_top", "table top": "table_top",
     "四足跪姿": "table_top", "四足": "table_top",
     "toe squat": "toe_squat", "压脚背": "toe_squat",
+    # 用户自己命名的体式，没有对应的梵文名。
+    "supine back opener": "back_opener", "back opener": "back_opener",
+    "开背": "back_opener",
     "ardha uttanasana": "ardha_uttanasana",
     "half forward fold": "ardha_uttanasana", "展背": "ardha_uttanasana",
     # —— 故意没有模板，别被更短的别名认走 ——
